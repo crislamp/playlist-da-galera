@@ -12,6 +12,7 @@ import {
   addTracks,
   loadRoleData,
   enrichTags,
+  searchSpotify,
   getYtCache,
   saveYtCache,
 } from "./lib/supabase.js";
@@ -55,8 +56,12 @@ const STRINGS = {
     your_turn: "Sua vez",
     connect_desc: "Conecte seu Spotify — o app já puxa as músicas que você mais ouve. Sem digitar nada.",
     connect_spotify: "Conectar Spotify",
+    tab_add: "➕ Adicionar",
     tab_tops: "🎧 Mais ouvidas",
-    tab_playlist: "➕ Colar playlist",
+    tab_playlist: "📋 Colar playlist",
+    add_hint: "Busca a música e adiciona — sem precisar logar. 🎧",
+    connect_prompt: "Conecte o Spotify pra usar isso 👇",
+    connect_btn: "🎧 Conectar Spotify",
     your_name: "Seu nome no rolê",
     your_name_ph: "Como você aparece",
     top_played: "Mais ouvidas:",
@@ -144,8 +149,12 @@ const STRINGS = {
     your_turn: "Your turn",
     connect_desc: "Connect your Spotify — the app grabs the songs you listen to most. No typing.",
     connect_spotify: "Connect Spotify",
+    tab_add: "➕ Add",
     tab_tops: "🎧 Top played",
-    tab_playlist: "➕ Paste playlist",
+    tab_playlist: "📋 Paste playlist",
+    add_hint: "Search a song and add it — no login needed. 🎧",
+    connect_prompt: "Connect Spotify to use this 👇",
+    connect_btn: "🎧 Connect Spotify",
     your_name: "Your name",
     your_name_ph: "How you appear",
     top_played: "Top played:",
@@ -389,7 +398,6 @@ function RolePage() {
   const [role, setRole] = useState(null);
   const [loadErr, setLoadErr] = useState("");
   const [data, setData] = useState({ participants: [], tracks: [] });
-  const [loggedIn, setLoggedIn] = useState(sp.isLoggedIn());
 
   useEffect(() => {
     getRole(code).then((r) => { if (r) setRole(r); else setLoadErr(t("role_not_found")); })
@@ -417,9 +425,7 @@ function RolePage() {
         <ShareBox code={role.code} />
       </div>
 
-      {loggedIn
-        ? <MyPicks role={role} onSaved={refresh} onLogout={() => setLoggedIn(false)} />
-        : <ConnectCard onLogin={() => sp.login()} />}
+      <MyPicks role={role} onSaved={refresh} />
       <Blend role={role} data={data} onRefresh={refresh} />
     </>
   );
@@ -457,32 +463,31 @@ function ConnectCard({ onLogin }) {
 }
 
 /* ---------------- minhas músicas (mais ouvidas + busca + colar playlist) ---------------- */
-function MyPicks({ role, onSaved, onLogout }) {
+function MyPicks({ role, onSaved }) {
   const { t } = useT();
+  const [loggedIn, setLoggedIn] = useState(sp.isLoggedIn());
   const [name, setName] = useState("");
   const [range, setRange] = useState("medium_term");
   const [tops, setTops] = useState([]);
   const [selected, setSelected] = useState({});
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
   const [status, setStatus] = useState("");
   const [ready, setReady] = useState(false);
   const [plName, setPlName] = useState("");
   const [plUrl, setPlUrl] = useState("");
   const [plBusy, setPlBusy] = useState(false);
-  const [mode, setMode] = useState("tops");
+  const [mode, setMode] = useState("add");
   const [showHelp, setShowHelp] = useState(false);
 
   useEffect(() => {
+    if (!sp.isLoggedIn()) return;
     (async () => {
       try {
         const profile = await sp.getMe();
         setName((n) => n || profile.display_name || "");
-        const tk = await sp.getTopTracks(range, 30);
-        setTops(tk);
-        const sel = {};
-        tk.slice(0, 15).forEach((x) => (sel[x.uri] = { ...x, source: "top" }));
-        setSelected(sel);
+        setTops(await sp.getTopTracks(range, 30));
         setReady(true);
       } catch (e) {
         setStatus("⚠️ " + e.message);
@@ -505,7 +510,11 @@ function MyPicks({ role, onSaved, onLogout }) {
   }
   async function doSearch() {
     if (!query.trim()) return;
-    try { setResults(await sp.searchTracks(query, 12)); } catch (e) { setStatus("⚠️ " + e.message); }
+    setSearching(true);
+    try {
+      setResults(loggedIn ? await sp.searchTracks(query, 12) : await searchSpotify(query, 12));
+    } catch (e) { setStatus("⚠️ " + e.message); }
+    finally { setSearching(false); }
   }
   async function addPlaylist() {
     if (!plName.trim()) return setStatus(t("err_whose"));
@@ -543,21 +552,46 @@ function MyPicks({ role, onSaved, onLogout }) {
   }
 
   const count = Object.keys(selected).length;
+  const connectPrompt = (
+    <div style={{ textAlign: "center", padding: "6px 0 4px" }}>
+      <p className="muted" style={{ marginTop: 0 }}>{t("connect_prompt")}</p>
+      <button className="btn green" onClick={() => sp.login()} disabled={!configOk}>{t("connect_btn")}</button>
+    </div>
+  );
+
   return (
     <div className="card">
+      <div className="field">
+        <label htmlFor="dn">{t("your_name")}</label>
+        <input id="dn" value={name} onChange={(e) => setName(e.target.value)} maxLength={24}
+          placeholder={t("your_name_ph")} />
+      </div>
+
       <div className="tabs">
+        <button className={mode === "add" ? "on" : ""} onClick={() => setMode("add")}>{t("tab_add")}</button>
         <button className={mode === "tops" ? "on" : ""} onClick={() => setMode("tops")}>{t("tab_tops")}</button>
         <button className={mode === "playlist" ? "on" : ""} onClick={() => setMode("playlist")}>{t("tab_playlist")}</button>
       </div>
 
-      {mode === "tops" && (
+      {mode === "add" && (
         <>
-          <div className="field">
-            <label htmlFor="dn">{t("your_name")}</label>
-            <input id="dn" value={name} onChange={(e) => setName(e.target.value)} maxLength={24}
-              placeholder={t("your_name_ph")} />
+          <p className="muted" style={{ marginTop: 0 }}>{t("add_hint")}</p>
+          <div className="searchbox">
+            <input value={query} onChange={(e) => setQuery(e.target.value)}
+              placeholder={t("search_ph")}
+              onKeyDown={(e) => e.key === "Enter" && doSearch()} />
+            <button className="btn sm" onClick={doSearch} disabled={searching}>{searching ? "…" : t("search_btn")}</button>
           </div>
+          <div className="tracklist">
+            {results.map((tk) => (
+              <TrackRow key={tk.uri} t={tk} on={!!selected[tk.uri]} onClick={() => toggle(tk, "manual")} />
+            ))}
+          </div>
+        </>
+      )}
 
+      {mode === "tops" && (loggedIn ? (
+        <>
           <div className="segrow">
             <span className="seglabel">{t("top_played")}</span>
             <div className="seg">
@@ -566,33 +600,16 @@ function MyPicks({ role, onSaved, onLogout }) {
               ))}
             </div>
           </div>
-
           {!ready && !status && <p className="muted">{t("pulling_tops")}</p>}
           <div className="tracklist">
             {tops.map((tk) => (
               <TrackRow key={tk.uri} t={tk} on={!!selected[tk.uri]} onClick={() => toggle(tk, "top")} />
             ))}
           </div>
-
-          <div className="searchbox">
-            <input value={query} onChange={(e) => setQuery(e.target.value)}
-              placeholder={t("search_ph")}
-              onKeyDown={(e) => e.key === "Enter" && doSearch()} />
-            <button className="btn sm" onClick={doSearch}>{t("search_btn")}</button>
-          </div>
-          {results.length > 0 && (
-            <div className="tracklist">
-              {results.map((tk) => (
-                <TrackRow key={tk.uri} t={tk} on={!!selected[tk.uri]} onClick={() => toggle(tk, "manual")} />
-              ))}
-            </div>
-          )}
-
-          <button className="btn wide" onClick={save} disabled={count === 0}>{t("save_btn", count)}</button>
         </>
-      )}
+      ) : connectPrompt)}
 
-      {mode === "playlist" && (
+      {mode === "playlist" && (loggedIn ? (
         <div>
           <p className="muted" style={{ marginTop: 0 }}>
             {t("paste_desc_pre")}<b>{t("paste_desc_bold")}</b>{t("paste_desc_post")}{" "}
@@ -614,10 +631,14 @@ function MyPicks({ role, onSaved, onLogout }) {
             {plBusy ? t("reading") : t("add_playlist_btn")}
           </button>
         </div>
-      )}
+      ) : connectPrompt)}
+
+      <button className="btn wide" onClick={save} disabled={count === 0}>{t("save_btn", count)}</button>
 
       <div className="row-right">
-        <button className="linkbtn" onClick={() => { sp.logout(); onLogout(); }}>{t("logout")}</button>
+        {loggedIn
+          ? <button className="linkbtn" onClick={() => { sp.logout(); setLoggedIn(false); setTops([]); setReady(false); }}>{t("logout")}</button>
+          : <button className="linkbtn" onClick={() => sp.login()}>{t("connect_btn")}</button>}
       </div>
       {status && <p className="muted" style={{ marginTop: 10 }}>{status}</p>}
     </div>

@@ -17,6 +17,9 @@ const CORS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 const LFM = "https://ws.audioscrobbler.com/2.0/";
+// o YouTube sinaliza cota estourada com 403 OU 429 (e reason/quota no corpo)
+const isQuota = (status: number, body: string) =>
+  (status === 403 || status === 429) && /quota|ratelimit|resource_exhausted/i.test(body);
 const asArray = (x: any) => (Array.isArray(x) ? x : x ? [x] : []);
 const firstArtist = (s: any) => String(s || "").split(",")[0].trim();
 const json = (obj: any, status = 200) =>
@@ -89,20 +92,23 @@ Deno.serve(async (req) => {
       const ytkey = Deno.env.get("YT_API_KEY");
       if (!ytkey) throw new Error("Falta YT_API_KEY nos secrets.");
       const ids: Record<string, string> = {};
+      let quota = false;
       await pool(body.ytsearch, 4, async (item: any) => {
+        if (quota) return; // já estourou a cota: não gasta mais buscas
         const r = await fetch(
           `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=1&q=${encodeURIComponent(item.q)}&key=${ytkey}`
         );
         if (!r.ok) {
           const b = await r.text();
-          if (r.status === 403 && /quota/i.test(b)) throw new Error("quota");
+          if (isQuota(r.status, b)) { quota = true; }
           return;
         }
         const j = await r.json();
         const vid = j.items?.[0]?.id?.videoId;
         if (vid) ids[item.uri] = vid;
       });
-      return json({ ids });
+      // devolve o que achou + sinaliza quota (200) pro app avisar e tocar o que dá
+      return json({ ids, quota });
     }
 
     // ---------- MODO D: importar playlist do YouTube (sem login) ----------
@@ -118,7 +124,7 @@ Deno.serve(async (req) => {
         const r = await fetch(u);
         if (!r.ok) {
           const b = await r.text();
-          if (r.status === 403 && /quota/i.test(b)) throw new Error("quota");
+          if (isQuota(r.status, b)) throw new Error("quota");
           throw new Error("YouTube " + r.status + ": " + b);
         }
         const j = await r.json();

@@ -65,6 +65,7 @@ const STRINGS = {
     connect_prompt: "Conecte o Spotify pra usar isso 👇",
     connect_btn: "🎧 Conectar Spotify",
     yt_pl_title: "Colar playlist do YouTube / YT Music — sem login 📺",
+    yt_pl_hint: "💡 Músicas daqui já vêm com o clipe e tocam na hora, sem gastar a busca diária do YouTube.",
     yt_pl_link: "Link da playlist do YouTube",
     yt_pl_btn: "+ Adicionar playlist do YouTube",
     sp_pl_beta: "📋 Colar playlist do Spotify (beta — precisa logar, e só suas/colaborativas)",
@@ -106,7 +107,8 @@ const STRINGS = {
     create_youtube: "Criar no YouTube",
     yt_created: "✅ Playlist criada! Abrir no YouTube →",
     yt_progress: (i, n) => `Procurando os clipes… ${i}/${n}`,
-    yt_quota: "Limite diário do YouTube atingido 😕 Tenta de novo amanhã (a cota reseta todo dia).",
+    yt_quota: "Acabou a cota de busca do YouTube por hoje 😕 As músicas do Spotify precisam procurar o clipe (limite de ~100/dia). Reseta amanhã de madrugada. Dica: clipes de playlists do YouTube tocam na hora, sem limite.",
+    yt_quota_partial: (n) => `Toquei ${n} que já estavam prontas 🎧 As novas do Spotify não deram porque a busca do YouTube atingiu o limite de hoje (reseta amanhã). Playlists do YouTube tocam sem esse limite.`,
     yt_noclips: "Não achei os clipes no YouTube 😕",
     no_sp_tracks: "Essas faixas vieram do YouTube — não dá pra criar no Spotify. Usa o ▶️ Tocar ou o 📺 YouTube.",
     play_btn: "▶️ Tocar",
@@ -174,6 +176,7 @@ const STRINGS = {
     connect_prompt: "Connect Spotify to use this 👇",
     connect_btn: "🎧 Connect Spotify",
     yt_pl_title: "Paste a YouTube / YT Music playlist — no login 📺",
+    yt_pl_hint: "💡 Songs from here already include the clip and play instantly, without using YouTube's daily search.",
     yt_pl_link: "YouTube playlist link",
     yt_pl_btn: "+ Add YouTube playlist",
     sp_pl_beta: "📋 Paste a Spotify playlist (beta — needs login, only yours/collaborative)",
@@ -215,7 +218,8 @@ const STRINGS = {
     create_youtube: "Create on YouTube",
     yt_created: "✅ Playlist created! Open on YouTube →",
     yt_progress: (i, n) => `Finding the clips… ${i}/${n}`,
-    yt_quota: "YouTube daily limit reached 😕 Try again tomorrow (the quota resets daily).",
+    yt_quota: "Out of YouTube search quota for today 😕 Spotify songs have to look up their clip (~100/day limit). It resets overnight. Tip: clips from YouTube playlists play instantly, no limit.",
+    yt_quota_partial: (n) => `Played ${n} that were already prepared 🎧 The new Spotify ones didn't make it — YouTube search hit today's limit (resets tomorrow). YouTube playlists play without this limit.`,
     yt_noclips: "Couldn't find the clips on YouTube 😕",
     no_sp_tracks: "These tracks came from YouTube — can't create on Spotify. Use ▶️ Play or 📺 YouTube.",
     play_btn: "▶️ Play",
@@ -672,6 +676,7 @@ function MyPicks({ role, onSaved }) {
         <div>
           {/* YouTube — sem login, pra todos */}
           <p className="muted" style={{ marginTop: 0 }}>{t("yt_pl_title")}</p>
+          <p className="muted" style={{ marginTop: -4, fontSize: ".82rem" }}>{t("yt_pl_hint")}</p>
           <div className="field">
             <label htmlFor="ypn">{t("whose")}</label>
             <input id="ypn" value={ypName} onChange={(e) => setYpName(e.target.value)}
@@ -953,9 +958,11 @@ function Blend({ role, data, onRefresh }) {
   async function openPlayer() {
     setPreparing(true); setErr("");
     try {
-      const resolved = await getVideoIds(order);
+      const { tracks: resolved, quota } = await getVideoIds(order);
       const playable = resolved.filter((tk) => tk.videoId);
-      if (!playable.length) { setErr(t("no_videos")); return; }
+      if (!playable.length) { setErr(quota ? t("yt_quota") : t("no_videos")); return; }
+      // achou algumas, mas a cota de busca estourou no meio: toca o que dá e explica
+      if (quota) setErr(t("yt_quota_partial", playable.length));
       setPlayerTracks(playable);
     } catch (e) {
       setErr(e.message);

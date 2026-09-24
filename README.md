@@ -73,7 +73,7 @@ VITE_GOOGLE_CLIENT_ID=...      # Google Cloud → OAuth Client (só p/ export Yo
 [`supabase-schema.sql`](./supabase-schema.sql), [`migration-v2.sql`](./migration-v2.sql),
 [`migration-v3.sql`](./migration-v3.sql) e [`migration-v5.sql`](./migration-v5.sql).
 
-**Edge Function** ([`supabase/functions/enrich-tags`](./supabase/functions/enrich-tags/index.ts)):
+**Edge Function** ([`supabase/functions/swift-responder`](./supabase/functions/swift-responder/index.ts)):
 publique e configure os secrets `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`,
 `LASTFM_API_KEY`, `YT_API_KEY`. (o Redirect URI do Spotify e a Origem JS do Google
 precisam bater com a sua URL, incl. `http://127.0.0.1:5173`.)
@@ -85,7 +85,7 @@ precisam bater com a sua URL, incl. `http://127.0.0.1:5173`.)
 - [`src/lib/spotify.js`](./src/lib/spotify.js) — login PKCE, top tracks, busca, criar playlist
 - [`src/lib/youtube.js`](./src/lib/youtube.js) — player e criar playlist no YouTube
 - [`src/lib/supabase.js`](./src/lib/supabase.js) — rolês, faixas, cache, chamadas à função
-- [`supabase/functions/enrich-tags`](./supabase/functions/enrich-tags/index.ts) — busca Spotify, tags Last.fm, YouTube
+- [`supabase/functions/swift-responder`](./supabase/functions/swift-responder/index.ts) — busca Spotify, tags Last.fm, YouTube
 
 ## ⚠️ Limites conhecidos (regras das plataformas em 2026)
 

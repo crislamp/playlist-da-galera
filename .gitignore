@@ -4,3 +4,6 @@ dist
 .env.local
 .DS_Store
 *.log
+
+# Supabase CLI temp
+supabase/.temp/

@@ -173,21 +173,36 @@ export async function saveYtCache(map) {
   try { await supabase.from("yt_cache").upsert(rows, { onConflict: "uri" }); } catch { /* sem cache */ }
 }
 
-// resolve o videoId do YouTube de cada faixa (cache primeiro; busca só o que falta).
-// SEM login (busca via API key no servidor). Retorna as faixas com { videoId }.
+// resolve o videoId do YouTube de cada faixa, gastando o mínimo de cota de busca.
+// Ordem: (1) faixas do YouTube já trazem o id na uri; (2) cache; (3) busca só o resto.
+// Retorna { tracks: [...{videoId}], quota } — quota=true se a busca do dia estourou.
 export async function getVideoIds(tracks) {
-  if (!tracks || !tracks.length) return [];
-  const cache = await getYtCache(tracks.map((t) => t.uri));
+  if (!tracks || !tracks.length) return { tracks: [], quota: false };
+
+  // (1) faixas importadas do YouTube têm o videoId embutido (uri "yt:VIDEOID") — 0 busca
+  const cache = {};
+  tracks.forEach((t) => {
+    if (t.videoId) cache[t.uri] = t.videoId;
+    else if (typeof t.uri === "string" && t.uri.startsWith("yt:")) cache[t.uri] = t.uri.slice(3);
+  });
+
+  // (2) cache salvo (uri -> videoId), pra não buscar de novo o que já achamos um dia
+  const need = tracks.filter((t) => !cache[t.uri]).map((t) => t.uri);
+  Object.assign(cache, await getYtCache(need));
+
+  // (3) só o que sobrou consome a cota de busca do YouTube (100/dia)
   const misses = tracks.filter((t) => !cache[t.uri]);
+  let quota = false;
   if (misses.length) {
     try {
       const { data } = await supabase.functions.invoke(RESOLVE_FN, {
         body: { ytsearch: misses.map((t) => ({ uri: t.uri, q: `${t.title} ${t.artist}` })) },
       });
+      quota = data?.quota === true;
       const found = data?.ids || {};
       Object.assign(cache, found);
       saveYtCache(found).catch(() => {});
-    } catch { /* segue com o que tiver no cache */ }
+    } catch { /* rede caiu: segue com o que tiver no cache */ }
   }
-  return tracks.map((t) => ({ ...t, videoId: cache[t.uri] || null }));
+  return { tracks: tracks.map((t) => ({ ...t, videoId: cache[t.uri] || null })), quota };
 }

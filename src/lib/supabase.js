@@ -80,6 +80,19 @@ export async function searchSpotify(query, limit = 10) {
   }
 }
 
+// importa uma playlist PÚBLICA do YouTube SEM login (via API key no servidor)
+export async function importYtPlaylist(url) {
+  const { data, error } = await supabase.functions.invoke(RESOLVE_FN, { body: { ytplaylist: url } });
+  if (error) throw new Error("Não consegui ler essa playlist do YouTube.");
+  if (data?.error) throw new Error(data.error);
+  const tracks = data?.tracks || [];
+  // já cacheia os videoIds (uri -> videoId) pro player tocar na hora
+  const map = {};
+  tracks.forEach((t) => { if (t.video_id) map[t.uri] = t.video_id; });
+  saveYtCache(map).catch(() => {});
+  return tracks;
+}
+
 export async function enrichTags(tracks) {
   if (!tracks.length) return tracks;
   const payload = tracks.map((t) => ({ artist: t.artist, title: t.title }));

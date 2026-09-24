@@ -13,6 +13,7 @@ import {
   loadRoleData,
   enrichTags,
   searchSpotify,
+  importYtPlaylist,
   getYtCache,
   saveYtCache,
   getVideoIds,
@@ -63,6 +64,10 @@ const STRINGS = {
     add_hint: "Busca a música e adiciona — sem precisar logar. 🎧",
     connect_prompt: "Conecte o Spotify pra usar isso 👇",
     connect_btn: "🎧 Conectar Spotify",
+    yt_pl_title: "Colar playlist do YouTube / YT Music — sem login 📺",
+    yt_pl_link: "Link da playlist do YouTube",
+    yt_pl_btn: "+ Adicionar playlist do YouTube",
+    sp_pl_beta: "📋 Colar playlist do Spotify (beta — precisa logar, e só suas/colaborativas)",
     your_name: "Seu nome no rolê",
     your_name_ph: "Como você aparece",
     top_played: "Mais ouvidas:",
@@ -103,6 +108,7 @@ const STRINGS = {
     yt_progress: (i, n) => `Procurando os clipes… ${i}/${n}`,
     yt_quota: "Limite diário do YouTube atingido 😕 Tenta de novo amanhã (a cota reseta todo dia).",
     yt_noclips: "Não achei os clipes no YouTube 😕",
+    no_sp_tracks: "Essas faixas vieram do YouTube — não dá pra criar no Spotify. Usa o ▶️ Tocar ou o 📺 YouTube.",
     play_btn: "▶️ Tocar",
     preparing: "Preparando…",
     no_videos: "Não consegui preparar os clipes 😕",
@@ -167,6 +173,10 @@ const STRINGS = {
     add_hint: "Search a song and add it — no login needed. 🎧",
     connect_prompt: "Connect Spotify to use this 👇",
     connect_btn: "🎧 Connect Spotify",
+    yt_pl_title: "Paste a YouTube / YT Music playlist — no login 📺",
+    yt_pl_link: "YouTube playlist link",
+    yt_pl_btn: "+ Add YouTube playlist",
+    sp_pl_beta: "📋 Paste a Spotify playlist (beta — needs login, only yours/collaborative)",
     your_name: "Your name",
     your_name_ph: "How you appear",
     top_played: "Top played:",
@@ -207,6 +217,7 @@ const STRINGS = {
     yt_progress: (i, n) => `Finding the clips… ${i}/${n}`,
     yt_quota: "YouTube daily limit reached 😕 Try again tomorrow (the quota resets daily).",
     yt_noclips: "Couldn't find the clips on YouTube 😕",
+    no_sp_tracks: "These tracks came from YouTube — can't create on Spotify. Use ▶️ Play or 📺 YouTube.",
     play_btn: "▶️ Play",
     preparing: "Getting it ready…",
     no_videos: "Couldn't prepare the clips 😕",
@@ -501,6 +512,9 @@ function MyPicks({ role, onSaved }) {
   const [plName, setPlName] = useState("");
   const [plUrl, setPlUrl] = useState("");
   const [plBusy, setPlBusy] = useState(false);
+  const [ypName, setYpName] = useState("");
+  const [ypUrl, setYpUrl] = useState("");
+  const [ypBusy, setYpBusy] = useState(false);
   const [mode, setMode] = useState("add");
   const [showHelp, setShowHelp] = useState(false);
 
@@ -558,6 +572,27 @@ function MyPicks({ role, onSaved }) {
       setStatus("⚠️ " + e.message);
     } finally {
       setPlBusy(false);
+    }
+  }
+  async function addYtPlaylist() {
+    if (!ypName.trim()) return setStatus(t("err_whose"));
+    if (!ypUrl.trim()) return setStatus(t("err_pastelink"));
+    setYpBusy(true);
+    try {
+      setStatus(t("reading_pl", ypName.trim()));
+      let tracks = await importYtPlaylist(ypUrl.trim());
+      if (!tracks.length) throw new Error(t("err_empty_pl"));
+      setStatus(t("analyzing"));
+      tracks = await enrichTags(tracks.map((tk) => ({ ...tk, source: "youtube" })));
+      const p = await joinRole(role.id, ypName.trim());
+      await saveTracks(role.id, p.id, tracks);
+      setStatus(t("added_pl", tracks.length, ypName.trim()));
+      setYpName(""); setYpUrl("");
+      onSaved();
+    } catch (e) {
+      setStatus("⚠️ " + e.message);
+    } finally {
+      setYpBusy(false);
     }
   }
   async function save() {
@@ -633,29 +668,55 @@ function MyPicks({ role, onSaved }) {
         </>
       ) : connectPrompt)}
 
-      {mode === "playlist" && (loggedIn ? (
+      {mode === "playlist" && (
         <div>
-          <p className="muted" style={{ marginTop: 0 }}>
-            {t("paste_desc_pre")}<b>{t("paste_desc_bold")}</b>{t("paste_desc_post")}{" "}
-            <button className="help" onClick={() => setShowHelp((v) => !v)} aria-label="?">?</button>
-          </p>
-          {showHelp && <div className="helpbox">{t("paste_help")}</div>}
+          {/* YouTube — sem login, pra todos */}
+          <p className="muted" style={{ marginTop: 0 }}>{t("yt_pl_title")}</p>
           <div className="field">
-            <label htmlFor="pln">{t("whose")}</label>
-            <input id="pln" value={plName} onChange={(e) => setPlName(e.target.value)}
+            <label htmlFor="ypn">{t("whose")}</label>
+            <input id="ypn" value={ypName} onChange={(e) => setYpName(e.target.value)}
               placeholder={t("whose_ph")} maxLength={24} />
           </div>
           <div className="field">
-            <label htmlFor="plu">{t("playlist_link")}</label>
-            <input id="plu" value={plUrl} onChange={(e) => setPlUrl(e.target.value)}
-              placeholder="https://open.spotify.com/playlist/..."
-              onKeyDown={(e) => e.key === "Enter" && addPlaylist()} />
+            <label htmlFor="ypu">{t("yt_pl_link")}</label>
+            <input id="ypu" value={ypUrl} onChange={(e) => setYpUrl(e.target.value)}
+              placeholder="https://www.youtube.com/playlist?list=..."
+              onKeyDown={(e) => e.key === "Enter" && addYtPlaylist()} />
           </div>
-          <button className="btn wide" onClick={addPlaylist} disabled={plBusy}>
-            {plBusy ? t("reading") : t("add_playlist_btn")}
+          <button className="btn wide" onClick={addYtPlaylist} disabled={ypBusy}>
+            {ypBusy ? t("reading") : t("yt_pl_btn")}
           </button>
+
+          {/* Spotify — beta (só logado) */}
+          <div className="pl-add">
+            {loggedIn ? (
+              <>
+                <p className="muted" style={{ marginTop: 0 }}>
+                  {t("paste_desc_pre")}<b>{t("paste_desc_bold")}</b>{t("paste_desc_post")}{" "}
+                  <button className="help" onClick={() => setShowHelp((v) => !v)} aria-label="?">?</button>
+                </p>
+                {showHelp && <div className="helpbox">{t("paste_help")}</div>}
+                <div className="field">
+                  <label htmlFor="pln">{t("whose")}</label>
+                  <input id="pln" value={plName} onChange={(e) => setPlName(e.target.value)}
+                    placeholder={t("whose_ph")} maxLength={24} />
+                </div>
+                <div className="field">
+                  <label htmlFor="plu">{t("playlist_link")}</label>
+                  <input id="plu" value={plUrl} onChange={(e) => setPlUrl(e.target.value)}
+                    placeholder="https://open.spotify.com/playlist/..."
+                    onKeyDown={(e) => e.key === "Enter" && addPlaylist()} />
+                </div>
+                <button className="btn wide expsp" onClick={addPlaylist} disabled={plBusy}>
+                  {plBusy ? t("reading") : t("add_playlist_btn")}
+                </button>
+              </>
+            ) : (
+              <p className="muted" style={{ fontSize: 12, margin: 0 }}>{t("sp_pl_beta")}</p>
+            )}
+          </div>
         </div>
-      ) : connectPrompt)}
+      )}
 
       <button className="btn wide" onClick={save} disabled={count === 0}>{t("save_btn", count)}</button>
 
@@ -853,7 +914,8 @@ function Blend({ role, data, onRefresh }) {
     if (!sp.isLoggedIn()) { sp.login(); return; }
     setExportingWhich("spotify"); setErr(""); setLink("");
     try {
-      const uris = order.map((tk) => tk.uri);
+      const uris = order.map((tk) => tk.uri).filter((u) => u.startsWith("spotify:"));
+      if (!uris.length) { setErr(t("no_sp_tracks")); return; }
       const url = await sp.createPlaylist(
         `Playlist da Galera — ${role.name}`,
         uris,
@@ -912,11 +974,11 @@ function Blend({ role, data, onRefresh }) {
           <button className="btn ghost sm" onClick={onRefresh}>{t("refresh")}</button>
           <button className="btn ghost sm" onClick={regen}>{t("reshuffle")}</button>
           <button className={"btn sm" + (enrichOpen ? "" : " ghost")} onClick={() => setEnrichOpen((v) => !v)}>{t("enrich")}</button>
-          <button className="btn sm green" onClick={() => (sp.isLoggedIn() ? exportSpotify() : setBetaMsg("spotify"))} disabled={!!exportingWhich}>
+          <button className="btn sm expsp" onClick={() => (sp.isLoggedIn() ? exportSpotify() : setBetaMsg("spotify"))} disabled={!!exportingWhich}>
             {exportingWhich === "spotify" ? t("creating") : <>🎧 Spotify<sup className="betatag">{t("beta_tag")}</sup></>}
           </button>
           {youtubeReady && (
-            <button className="btn sm yt" onClick={() => (yt.isLoggedIn() ? exportYouTube() : setBetaMsg("youtube"))} disabled={!!exportingWhich}>
+            <button className="btn sm expyt" onClick={() => (yt.isLoggedIn() ? exportYouTube() : setBetaMsg("youtube"))} disabled={!!exportingWhich}>
               {exportingWhich === "youtube" ? t("creating") : <>📺 YouTube<sup className="betatag">{t("beta_tag")}</sup></>}
             </button>
           )}

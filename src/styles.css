@@ -92,6 +92,11 @@ input:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-colo
 .btn.ghost { background: var(--surface-2); color: var(--text); border: 1px solid var(--line); }
 .btn.green { background: var(--green); }
 .btn.yt { background: #ff3333; }
+/* export discreto — deixa o ▶️ Tocar ser a estrela */
+.btn.expsp, .btn.expyt { background: var(--surface-2); border: 1px solid var(--line); font-weight: 700; }
+.btn.expsp { color: #1aa64b; }
+.btn.expyt { color: #e0574f; }
+.btn.expsp:hover, .btn.expyt:hover { background: var(--surface-3); filter: none; }
 .btn.wide { width: 100%; margin-top: 4px; }
 .btn.sm { padding: 7px 12px; font-size: 13px; }
 .linkbtn { border: 0; background: none; color: var(--text-faint); cursor: pointer; font-size: 12.5px; text-decoration: underline; }

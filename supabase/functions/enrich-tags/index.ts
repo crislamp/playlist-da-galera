@@ -20,6 +20,20 @@ const firstArtist = (s: any) => String(s || "").split(",")[0].trim();
 const json = (obj: any, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 
+function ytPlaylistId(input: string) {
+  const s = String(input || "").trim();
+  const m = s.match(/[?&]list=([A-Za-z0-9_-]+)/) || (/^[A-Za-z0-9_-]{12,}$/.test(s) ? [null, s] : null);
+  return m ? m[1] : null;
+}
+// tenta separar "Artista - Música (Official Video)" em {artist, title}
+function parseYtTitle(raw: string, channel: string) {
+  let s = String(raw || "").replace(/\([^)]*\)|\[[^\]]*\]/g, "")
+    .replace(/official (music )?video|lyric video|clipe oficial|videoclipe|audio|áudio/gi, "").trim();
+  const parts = s.split(/\s[-–—]\s/);
+  if (parts.length >= 2) return { artist: parts[0].trim(), title: parts.slice(1).join(" - ").trim() };
+  return { artist: String(channel || "").replace(/\s*-\s*Topic$/i, "").trim(), title: s };
+}
+
 async function pool(items: any[], limit: number, fn: (x: any) => Promise<void>) {
   let i = 0;
   await Promise.all(Array(Math.min(limit, items.length)).fill(0).map(async () => {
@@ -87,6 +101,40 @@ Deno.serve(async (req) => {
         if (vid) ids[item.uri] = vid;
       });
       return json({ ids });
+    }
+
+    // ---------- MODO D: importar playlist do YouTube (sem login) ----------
+    if (typeof body.ytplaylist === "string") {
+      const ytkey = Deno.env.get("YT_API_KEY");
+      if (!ytkey) throw new Error("Falta YT_API_KEY nos secrets.");
+      const pid = ytPlaylistId(body.ytplaylist);
+      if (!pid) throw new Error("Link de playlist do YouTube inválido.");
+      const tracks: any[] = [];
+      let pageToken = "";
+      for (let page = 0; page < 4; page++) {
+        const u = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId=${pid}&key=${ytkey}${pageToken ? `&pageToken=${pageToken}` : ""}`;
+        const r = await fetch(u);
+        if (!r.ok) {
+          const b = await r.text();
+          if (r.status === 403 && /quota/i.test(b)) throw new Error("quota");
+          throw new Error("YouTube " + r.status + ": " + b);
+        }
+        const j = await r.json();
+        for (const it of j.items || []) {
+          const sn = it.snippet;
+          const vid = sn?.resourceId?.videoId;
+          if (!vid || sn.title === "Private video" || sn.title === "Deleted video") continue;
+          const parsed = parseYtTitle(sn.title, sn.videoOwnerChannelTitle);
+          tracks.push({
+            uri: `yt:${vid}`, video_id: vid,
+            title: parsed.title, artist: parsed.artist,
+            art: sn.thumbnails?.default?.url || null, genre: "",
+          });
+        }
+        pageToken = j.nextPageToken;
+        if (!pageToken) break;
+      }
+      return json({ tracks });
     }
 
     // ---------- MODO B: enriquecer com Last.fm ----------

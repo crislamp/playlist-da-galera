@@ -512,7 +512,7 @@ function MyPicks({ role, onSaved }) {
     if (!query.trim()) return;
     setSearching(true);
     try {
-      setResults(loggedIn ? await sp.searchTracks(query, 12) : await searchSpotify(query, 12));
+      setResults(loggedIn ? await sp.searchTracks(query, 10) : await searchSpotify(query, 10));
     } catch (e) { setStatus("⚠️ " + e.message); }
     finally { setSearching(false); }
   }

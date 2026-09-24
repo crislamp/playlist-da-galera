@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
       if (!q) return json({ tracks: [] });
       const token = await spotifyToken();
       const r = await fetch(
-        `https://api.spotify.com/v1/search?type=track&limit=12&market=BR&q=${encodeURIComponent(q)}`,
+        `https://api.spotify.com/v1/search?type=track&limit=10&market=BR&q=${encodeURIComponent(q)}`,
         { headers: { Authorization: "Bearer " + token } }
       );
       if (!r.ok) throw new Error("Spotify " + r.status + ": " + (await r.text()));

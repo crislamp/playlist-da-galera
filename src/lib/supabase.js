@@ -69,7 +69,7 @@ const RESOLVE_FN = clean(import.meta.env.VITE_RESOLVE_FN) || "resolve-spotify-pl
 const firstArtist = (t) => (t.artist || "").split(",")[0].trim();
 
 // busca música no Spotify SEM login (via Edge Function, client-credentials)
-export async function searchSpotify(query, limit = 12) {
+export async function searchSpotify(query, limit = 10) {
   if (!query || !query.trim()) return [];
   try {
     const { data, error } = await supabase.functions.invoke(RESOLVE_FN, { body: { search: query.trim(), limit } });

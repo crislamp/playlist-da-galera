@@ -185,9 +185,9 @@ export async function getTopTracks(time_range = "medium_term", limit = 30) {
   return (data.items || []).map(normalizeTrack);
 }
 
-export async function searchTracks(q, limit = 12) {
+export async function searchTracks(q, limit = 10) {
   if (!q.trim()) return [];
-  const data = await api(`/search?type=track&limit=${limit}&q=${encodeURIComponent(q)}`);
+  const data = await api(`/search?type=track&limit=${Math.min(limit, 10)}&q=${encodeURIComponent(q)}`);
   return (data.tracks?.items || []).map(normalizeTrack);
 }
 

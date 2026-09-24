@@ -4,8 +4,12 @@
 // ------------------------------------------------------------------
 import { createClient } from "@supabase/supabase-js";
 
-const url = import.meta.env.VITE_SUPABASE_URL;
-const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// remove caracteres invisíveis/estranhos que podem grudar ao colar a chave
+// (espaço zero-width, aspa curva, etc.) — senão o header quebra na nuvem.
+const clean = (v) => (v || "").replace(/[^\x21-\x7E]/g, "");
+
+const url = clean(import.meta.env.VITE_SUPABASE_URL);
+const key = clean(import.meta.env.VITE_SUPABASE_ANON_KEY);
 
 // trata os valores de exemplo do .env.example como "não configurado"
 const isPlaceholder = (v) => !v || /cole_aqui|xxxxxxxx/i.test(v);
@@ -61,7 +65,7 @@ export async function joinRole(roleId, displayName) {
 
 // adiciona gênero/vibe às faixas via Last.fm (Edge Function).
 // o slug real da função vem do .env (o Supabase gera um nome aleatório).
-const RESOLVE_FN = import.meta.env.VITE_RESOLVE_FN || "resolve-spotify-playlist";
+const RESOLVE_FN = clean(import.meta.env.VITE_RESOLVE_FN) || "resolve-spotify-playlist";
 const firstArtist = (t) => (t.artist || "").split(",")[0].trim();
 
 export async function enrichTags(tracks) {

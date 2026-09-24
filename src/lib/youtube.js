@@ -6,7 +6,7 @@
 // .env: VITE_GOOGLE_CLIENT_ID  (Client ID OAuth do Google Cloud)
 // ------------------------------------------------------------------
 
-const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+const CLIENT_ID = (import.meta.env.VITE_GOOGLE_CLIENT_ID || "").replace(/[^\x21-\x7E]/g, "");
 const SCOPE = "https://www.googleapis.com/auth/youtube";
 export const youtubeReady = !!CLIENT_ID && !/cole_aqui/i.test(CLIENT_ID || "");
 

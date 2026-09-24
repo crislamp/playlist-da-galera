@@ -3,7 +3,7 @@
 // e as chamadas que o app usa: perfil, top tracks, busca, criar playlist.
 // ------------------------------------------------------------------
 
-const CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
+const CLIENT_ID = (import.meta.env.VITE_SPOTIFY_CLIENT_ID || "").replace(/[^\x21-\x7E]/g, "");
 const SCOPES = [
   "user-top-read",
   "playlist-modify-public",

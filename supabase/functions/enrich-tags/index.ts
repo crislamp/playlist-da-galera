@@ -1,11 +1,13 @@
 // ------------------------------------------------------------------
-// Edge Function (2 modos):
+// Edge Function (4 modos):
 //  A) { search: "texto" } -> busca no Spotify via CLIENT CREDENTIALS
 //     (não conta como "usuário" -> a galera contribui SEM login, sem teto de 5)
 //  B) { tracks: [{artist,title}] } -> enriquece com Last.fm
 //     (tags de vibe da faixa + ouvintes + similares do artista)
+//  C) { ytsearch: [{uri,q}] } -> resolve videoIds do YouTube pro player (sem login)
+//  D) { ytplaylist: "url" } -> importa playlist pública do YouTube (sem login)
 //
-// Secrets: SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, LASTFM_API_KEY
+// Secrets: SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, LASTFM_API_KEY, YT_API_KEY
 // Slug publicado no Supabase: "swift-responder".
 // ------------------------------------------------------------------
 

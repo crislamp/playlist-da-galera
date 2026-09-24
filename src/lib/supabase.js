@@ -109,6 +109,14 @@ export async function createSpotifyPlaylist(name, tracks, description = "") {
   return { url: data?.url || null, count: data?.count || 0 };
 }
 
+// importa uma playlist PÚBLICA do Spotify SEM login (via página embed no servidor)
+export async function importSpotifyPlaylist(url) {
+  const { data, error } = await supabase.functions.invoke(RESOLVE_FN, { body: { spotifyplaylist: url } });
+  if (error) throw new Error("Não consegui ler essa playlist do Spotify.");
+  if (data?.error) throw new Error(data.error);
+  return data?.tracks || [];
+}
+
 export async function enrichTags(tracks) {
   if (!tracks.length) return tracks;
   const payload = tracks.map((t) => ({ artist: t.artist, title: t.title }));

@@ -14,6 +14,7 @@ import {
   enrichTags,
   searchSpotify,
   importYtPlaylist,
+  importSpotifyPlaylist,
   getYtCache,
   saveYtCache,
   getVideoIds,
@@ -69,6 +70,8 @@ const STRINGS = {
     yt_pl_hint: "💡 Músicas daqui já vêm com o clipe e tocam na hora, sem gastar a busca diária do YouTube.",
     yt_pl_link: "Link da playlist do YouTube",
     yt_pl_btn: "+ Adicionar playlist do YouTube",
+    sp_pl_title: "Colar playlist do Spotify — sem login 🎧",
+    sp_pl_hint: "💡 Funciona com qualquer playlist pública (até 50 músicas).",
     sp_pl_beta: "📋 Colar playlist do Spotify (beta — precisa logar, e só suas/colaborativas)",
     your_name: "Seu nome no rolê",
     your_name_ph: "Como você aparece",
@@ -180,6 +183,8 @@ const STRINGS = {
     yt_pl_hint: "💡 Songs from here already include the clip and play instantly, without using YouTube's daily search.",
     yt_pl_link: "YouTube playlist link",
     yt_pl_btn: "+ Add YouTube playlist",
+    sp_pl_title: "Paste a Spotify playlist — no login 🎧",
+    sp_pl_hint: "💡 Works with any public playlist (up to 50 songs).",
     sp_pl_beta: "📋 Paste a Spotify playlist (beta — needs login, only yours/collaborative)",
     your_name: "Your name",
     your_name_ph: "How you appear",
@@ -564,7 +569,7 @@ function MyPicks({ role, onSaved }) {
     setPlBusy(true);
     try {
       setStatus(t("reading_pl", plName.trim()));
-      let tracks = await sp.getPlaylistTracks(plUrl.trim());
+      let tracks = (await importSpotifyPlaylist(plUrl.trim())).slice(0, 40);
       if (!tracks.length) throw new Error(t("err_empty_pl"));
       setStatus(t("analyzing"));
       tracks = await enrichTags(tracks.map((tk) => ({ ...tk, source: "playlist" })));
@@ -693,33 +698,24 @@ function MyPicks({ role, onSaved }) {
             {ypBusy ? t("reading") : t("yt_pl_btn")}
           </button>
 
-          {/* Spotify — beta (só logado) */}
+          {/* Spotify — sem login, pra todos (lê a playlist pública) */}
           <div className="pl-add">
-            {loggedIn ? (
-              <>
-                <p className="muted" style={{ marginTop: 0 }}>
-                  {t("paste_desc_pre")}<b>{t("paste_desc_bold")}</b>{t("paste_desc_post")}{" "}
-                  <button className="help" onClick={() => setShowHelp((v) => !v)} aria-label="?">?</button>
-                </p>
-                {showHelp && <div className="helpbox">{t("paste_help")}</div>}
-                <div className="field">
-                  <label htmlFor="pln">{t("whose")}</label>
-                  <input id="pln" value={plName} onChange={(e) => setPlName(e.target.value)}
-                    placeholder={t("whose_ph")} maxLength={24} />
-                </div>
-                <div className="field">
-                  <label htmlFor="plu">{t("playlist_link")}</label>
-                  <input id="plu" value={plUrl} onChange={(e) => setPlUrl(e.target.value)}
-                    placeholder="https://open.spotify.com/playlist/..."
-                    onKeyDown={(e) => e.key === "Enter" && addPlaylist()} />
-                </div>
-                <button className="btn wide expsp" onClick={addPlaylist} disabled={plBusy}>
-                  {plBusy ? t("reading") : t("add_playlist_btn")}
-                </button>
-              </>
-            ) : (
-              <p className="muted" style={{ fontSize: 12, margin: 0 }}>{t("sp_pl_beta")}</p>
-            )}
+            <p className="muted" style={{ marginTop: 0 }}>{t("sp_pl_title")}</p>
+            <p className="muted" style={{ marginTop: -4, fontSize: ".82rem" }}>{t("sp_pl_hint")}</p>
+            <div className="field">
+              <label htmlFor="pln">{t("whose")}</label>
+              <input id="pln" value={plName} onChange={(e) => setPlName(e.target.value)}
+                placeholder={t("whose_ph")} maxLength={24} />
+            </div>
+            <div className="field">
+              <label htmlFor="plu">{t("playlist_link")}</label>
+              <input id="plu" value={plUrl} onChange={(e) => setPlUrl(e.target.value)}
+                placeholder="https://open.spotify.com/playlist/..."
+                onKeyDown={(e) => e.key === "Enter" && addPlaylist()} />
+            </div>
+            <button className="btn wide" onClick={addPlaylist} disabled={plBusy}>
+              {plBusy ? t("reading") : t("add_playlist_btn")}
+            </button>
           </div>
         </div>
       )}

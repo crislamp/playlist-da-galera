@@ -9,6 +9,8 @@
 //  D) { ytplaylist: "url" } -> importa playlist pública do YouTube (sem login)
 //  E) { spotifycreate: {name,description,tracks} } -> cria playlist no Spotify numa
 //     conta de serviço (refresh token) -> qualquer um exporta sem login nem teto de contas
+//  F) { spotifyplaylist: "url" } -> lê playlist PÚBLICA do Spotify pela página embed
+//     (__NEXT_DATA__) -> importa sem login e sem a regra "só suas/colaborativas"
 //
 // Secrets: SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, LASTFM_API_KEY, YT_API_KEY,
 //          SPOTIFY_REFRESH_TOKEN (da conta que hospeda as playlists)
@@ -235,6 +237,52 @@ Deno.serve(async (req) => {
         if (!ar.ok) throw new Error("Spotify (adicionar): " + (await ar.text()));
       }
       return json({ url: pl.external_urls?.spotify || `https://open.spotify.com/playlist/${pl.id}`, count: uris.length });
+    }
+
+    // ---------- MODO F: importar playlist PÚBLICA do Spotify (sem login) ----------
+    // lê a página embed pública (__NEXT_DATA__ -> trackList). Pega até ~50 faixas de
+    // QUALQUER playlist pública — contorna a regra "só suas/colaborativas" da API.
+    if (typeof body.spotifyplaylist === "string") {
+      const s = body.spotifyplaylist.trim();
+      const m = s.match(/playlist[/:]([A-Za-z0-9]+)/);
+      const pid = m ? m[1] : (/^[A-Za-z0-9]{22}$/.test(s) ? s : null);
+      if (!pid) throw new Error("Link de playlist do Spotify inválido.");
+      const r = await fetch(`https://open.spotify.com/embed/playlist/${pid}`, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+      });
+      if (!r.ok) throw new Error("Não consegui abrir essa playlist do Spotify (" + r.status + ").");
+      const html = await r.text();
+      const i = html.indexOf("__NEXT_DATA__");
+      const j = i >= 0 ? html.indexOf(">", i) + 1 : -1;
+      const k = j >= 0 ? html.indexOf("</script>", j) : -1;
+      let tl: any[] = [];
+      if (j > 0 && k > j) {
+        try {
+          const data = JSON.parse(html.slice(j, k));
+          const find = (o: any): any => {
+            if (o && typeof o === "object") {
+              if (Array.isArray(o.trackList)) return o.trackList;
+              for (const v of Array.isArray(o) ? o : Object.values(o)) { const f = find(v); if (f) return f; }
+            }
+            return null;
+          };
+          tl = find(data) || [];
+        } catch { /* parse falhou -> lista vazia */ }
+      }
+      const tracks = tl
+        .filter((t: any) => t && typeof t.uri === "string" && t.uri.startsWith("spotify:track:"))
+        .map((t: any) => ({
+          uri: t.uri,
+          spotify_id: t.uri.split(":").pop(),
+          title: t.title || "",
+          artist: t.subtitle || "",
+          art: null,
+          genre: "",
+        }));
+      return json({ tracks });
     }
 
     // ---------- MODO B: enriquecer com Last.fm ----------

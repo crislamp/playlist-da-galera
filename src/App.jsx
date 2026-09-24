@@ -1,0 +1,858 @@
+import { useState, useEffect, useCallback, createContext, useContext } from "react";
+import { Routes, Route, useNavigate, useParams, Link } from "react-router-dom";
+import * as sp from "./lib/spotify.js";
+import * as yt from "./lib/youtube.js";
+import { youtubeReady } from "./lib/youtube.js";
+import {
+  supabaseReady,
+  createRole,
+  getRole,
+  joinRole,
+  saveTracks,
+  addTracks,
+  loadRoleData,
+  enrichTags,
+} from "./lib/supabase.js";
+import { buildBlend, moodScore } from "./lib/blend.js";
+
+const firstArtistName = (t) => (t.artist || "").split(",")[0].trim();
+
+const CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
+const clientIdOk = !!CLIENT_ID && !/cole_aqui/i.test(CLIENT_ID);
+const configOk = clientIdOk && supabaseReady;
+
+const SUGG_NAME = "✨ Sugestões"; // nome do participante das sugestões (fixo, não traduz)
+
+/* ---------------- i18n ---------------- */
+const STRINGS = {
+  pt: {
+    tagline: "Junta o gosto de todo mundo do rolê numa playlist só. Cada um conecta o Spotify (ou cola uma playlist), o app mistura com justiça — ninguém monopoliza o som e o set flui sem tranco de vibe.",
+    setup_bold: "Falta configurar as chaves.",
+    setup_rest: " Copie .env.example para .env e preencha o Client ID do Spotify e as chaves do Supabase. Veja o README.md.",
+    create_hangout: "Criar um rolê",
+    hangout_name: "Nome do rolê",
+    hangout_name_ph: "Ex: Churras de sábado",
+    where_play: "Onde vai tocar",
+    soon: "em breve",
+    dest_youtube: "YouTube (clipes)",
+    create_btn: "Criar e pegar o link",
+    creating: "Criando…",
+    join_hangout: "Entrar num rolê",
+    hangout_code: "Código do rolê",
+    code_ph: "Ex: K7QP",
+    join_btn: "Entrar",
+    create_err: "Deu ruim ao criar.",
+    connecting_spotify: "Conectando ao Spotify…",
+    role_not_found: "Rolê não encontrado.",
+    loading_role: "Carregando rolê…",
+    role_label: "Rolê",
+    copy_link: "Copiar link",
+    copied: "Copiado!",
+    your_turn: "Sua vez",
+    connect_desc: "Conecte seu Spotify — o app já puxa as músicas que você mais ouve. Sem digitar nada.",
+    connect_spotify: "Conectar Spotify",
+    tab_tops: "🎧 Mais ouvidas",
+    tab_playlist: "➕ Colar playlist",
+    your_name: "Seu nome no rolê",
+    your_name_ph: "Como você aparece",
+    top_played: "Mais ouvidas:",
+    range_short: "4 sem",
+    range_med: "6 meses",
+    range_long: "1 ano",
+    pulling_tops: "Puxando suas mais ouvidas…",
+    search_ph: "Buscar e adicionar outra música…",
+    search_btn: "Buscar",
+    save_btn: (n) => `Salvar minhas ${n} músicas no rolê`,
+    paste_desc_pre: "Cole uma playlist ",
+    paste_desc_bold: "sua ou colaborativa",
+    paste_desc_post: " e diga de quem é.",
+    paste_help: "Regra do Spotify: só dá pra ler playlists que você é dona ou colaboradora. Playlist pública de outra pessoa não abre. Pra usar a de um amigo: ele te adiciona como colaborador(a), ou ele mesmo loga na aba 'Mais ouvidas'.",
+    whose: "De quem é",
+    whose_ph: "Ex: Ana",
+    playlist_link: "Link da playlist do Spotify",
+    add_playlist_btn: "+ Adicionar playlist ao rolê",
+    reading: "Lendo…",
+    logout: "Sair do Spotify",
+    analyzing: "Analisando as vibes… 🎚️",
+    reading_pl: (name) => `Lendo a playlist de ${name}…`,
+    err_whose: "De quem é essa playlist?",
+    err_pastelink: "Cole o link da playlist.",
+    err_empty_pl: "Playlist vazia ou sem faixas legíveis.",
+    err_name: "Coloque seu nome.",
+    added_pl: (n, name) => `✅ ${n} músicas de "${name}" no rolê 🎶`,
+    saved_ok: (n) => `✅ Prontinho — ${n} músicas suas no rolê 🎶`,
+    the_playlist: "A playlist",
+    refresh: "↻ Atualizar",
+    reshuffle: "Rearranjar",
+    enrich: "✨ Enriquecer",
+    create_spotify: "Criar no Spotify",
+    connect_create_spotify: "Conectar e criar no Spotify",
+    yt_soon: "Configure o Google (README) pra criar no YouTube",
+    create_youtube: "Criar no YouTube",
+    yt_created: "✅ Playlist criada! Abrir no YouTube →",
+    yt_progress: (i, n) => `Procurando os clipes… ${i}/${n}`,
+    pl_created: "✅ Playlist criada! Abrir no Spotify →",
+    flow_label: "Fluidez das transições",
+    flow_hi: "Flui liso 🌊",
+    flow_mid: "Uns trancos",
+    flow_low: "Vibe pula muito",
+    anti_label: "Anti-monomúsica",
+    anti_sub: (p, c, h) => `${p} pessoas · ${c} em comum · ${h} 🔥`,
+    dominating: (name, pct) => `⚠️ ${name} está com ${pct}% da fila. Chame mais gente pra equilibrar.`,
+    democratic: "✅ Rolê democrático: todo mundo tem espaço parecido.",
+    enrich_title: "✨ Sugerir músicas novas — escolha a vibe",
+    add_sugg: (n) => `+ Adicionar ${n} ao rolê`,
+    sugg_mining: "Garimpando faixas novas…",
+    sugg_none: "Não achei sugestões novas dessa vibe — tenta outra.",
+    sugg_login: "Conecte seu Spotify (lá em cima) pra buscar sugestões.",
+    sugg_added: (n) => `✅ ${n} adicionada(s)!`,
+    empty_blend: "Ninguém jogou música ainda. Compartilhe o link do rolê 👆",
+    everyone: "todos curtem",
+    hino_tip: "Hino — muita gente conhece",
+  },
+  en: {
+    tagline: "Blends everyone's taste at the hangout into one playlist. Each person connects Spotify (or pastes a playlist), and the app mixes it fairly — nobody hogs the sound and the set flows without vibe whiplash.",
+    setup_bold: "Keys not configured yet.",
+    setup_rest: " Copy .env.example to .env and fill in your Spotify Client ID and Supabase keys. See README.md.",
+    create_hangout: "Create a hangout",
+    hangout_name: "Hangout name",
+    hangout_name_ph: "e.g. Saturday BBQ",
+    where_play: "Where it'll play",
+    soon: "soon",
+    dest_youtube: "YouTube (clips)",
+    create_btn: "Create & get the link",
+    creating: "Creating…",
+    join_hangout: "Join a hangout",
+    hangout_code: "Hangout code",
+    code_ph: "e.g. K7QP",
+    join_btn: "Join",
+    create_err: "Couldn't create it.",
+    connecting_spotify: "Connecting to Spotify…",
+    role_not_found: "Hangout not found.",
+    loading_role: "Loading hangout…",
+    role_label: "Hangout",
+    copy_link: "Copy link",
+    copied: "Copied!",
+    your_turn: "Your turn",
+    connect_desc: "Connect your Spotify — the app grabs the songs you listen to most. No typing.",
+    connect_spotify: "Connect Spotify",
+    tab_tops: "🎧 Top played",
+    tab_playlist: "➕ Paste playlist",
+    your_name: "Your name",
+    your_name_ph: "How you appear",
+    top_played: "Top played:",
+    range_short: "4 wks",
+    range_med: "6 mo",
+    range_long: "1 yr",
+    pulling_tops: "Pulling your top played…",
+    search_ph: "Search & add another song…",
+    search_btn: "Search",
+    save_btn: (n) => `Save my ${n} songs`,
+    paste_desc_pre: "Paste a playlist ",
+    paste_desc_bold: "you own or collaborate on",
+    paste_desc_post: " and say whose it is.",
+    paste_help: "Spotify rule: you can only read playlists you own or collaborate on. Someone else's public playlist won't open. To use a friend's: have them add you as a collaborator, or they log in themselves on the 'Top played' tab.",
+    whose: "Whose is it",
+    whose_ph: "e.g. Ana",
+    playlist_link: "Spotify playlist link",
+    add_playlist_btn: "+ Add playlist to hangout",
+    reading: "Reading…",
+    logout: "Log out of Spotify",
+    analyzing: "Analyzing the vibes… 🎚️",
+    reading_pl: (name) => `Reading ${name}'s playlist…`,
+    err_whose: "Whose playlist is this?",
+    err_pastelink: "Paste the playlist link.",
+    err_empty_pl: "Playlist empty or unreadable.",
+    err_name: "Enter your name.",
+    added_pl: (n, name) => `✅ ${n} songs from "${name}" added 🎶`,
+    saved_ok: (n) => `✅ Done — ${n} of your songs added 🎶`,
+    the_playlist: "The playlist",
+    refresh: "↻ Refresh",
+    reshuffle: "Reshuffle",
+    enrich: "✨ Enrich",
+    create_spotify: "Create on Spotify",
+    connect_create_spotify: "Connect & create on Spotify",
+    yt_soon: "Set up Google (README) to create on YouTube",
+    create_youtube: "Create on YouTube",
+    yt_created: "✅ Playlist created! Open on YouTube →",
+    yt_progress: (i, n) => `Finding the clips… ${i}/${n}`,
+    pl_created: "✅ Playlist created! Open in Spotify →",
+    flow_label: "Transition flow",
+    flow_hi: "Flows smooth 🌊",
+    flow_mid: "A few bumps",
+    flow_low: "Vibe jumps a lot",
+    anti_label: "Anti-samey",
+    anti_sub: (p, c, h) => `${p} people · ${c} shared · ${h} 🔥`,
+    dominating: (name, pct) => `⚠️ ${name} has ${pct}% of the queue. Get more people to balance it.`,
+    democratic: "✅ Balanced hangout: everyone gets similar space.",
+    enrich_title: "✨ Suggest new songs — pick the vibe",
+    add_sugg: (n) => `+ Add ${n} to the hangout`,
+    sugg_mining: "Digging up new tracks…",
+    sugg_none: "No new suggestions for that vibe — try another.",
+    sugg_login: "Connect your Spotify (above) to get suggestions.",
+    sugg_added: (n) => `✅ ${n} added!`,
+    empty_blend: "No songs yet. Share the hangout link 👆",
+    everyone: "everyone",
+    hino_tip: "Anthem — lots of people know it",
+  },
+};
+
+const VIBE_LABELS = {
+  pt: { chill: "chill", mellow: "suave", mid: "médio", upbeat: "animado", peak: "pico", none: "—" },
+  en: { chill: "chill", mellow: "mellow", mid: "mid", upbeat: "upbeat", peak: "peak", none: "—" },
+};
+
+const LangCtx = createContext({ lang: "pt", t: (k) => k });
+const useT = () => useContext(LangCtx);
+
+// os 5 climas (nota central de cada balde) — pra escolher a vibe das sugestões
+const VIBES = [
+  { m: 20, e: "🌙", key: "chill" },
+  { m: 42, e: "🍃", key: "mellow" },
+  { m: 57, e: "✨", key: "mid" },
+  { m: 72, e: "🔥", key: "upbeat" },
+  { m: 92, e: "⚡", key: "peak" },
+];
+
+// nota de clima (0-100) -> etiqueta de vibe (key + emoji + cor)
+function vibeOf(mood) {
+  if (mood == null) return { e: "🎵", key: "none", color: "#8b8b8b" };
+  if (mood < 35) return { e: "🌙", key: "chill", color: "#35b8c7" };
+  if (mood < 50) return { e: "🍃", key: "mellow", color: "#3fae8f" };
+  if (mood < 65) return { e: "✨", key: "mid", color: "#b06bff" };
+  if (mood < 80) return { e: "🔥", key: "upbeat", color: "#ff8a3d" };
+  return { e: "⚡", key: "peak", color: "#ff5c6a" };
+}
+
+export default function App() {
+  const [lang, setLang] = useState(() => {
+    try { return localStorage.getItem("pdg_lang") || "pt"; } catch { return "pt"; }
+  });
+  const t = (k, ...a) => {
+    const v = STRINGS[lang]?.[k];
+    return typeof v === "function" ? v(...a) : v ?? k;
+  };
+  function switchLang() {
+    const next = lang === "pt" ? "en" : "pt";
+    setLang(next);
+    try { localStorage.setItem("pdg_lang", next); } catch {}
+  }
+
+  return (
+    <LangCtx.Provider value={{ lang, t }}>
+      <div className="wrap">
+        <header className="top">
+          <Link to="/" className="brand">
+            <h1>Playlist da <span className="em">Galera</span></h1>
+          </Link>
+          <div className="hdr-btns">
+            <button className="lang-btn" onClick={switchLang} aria-label="Language">🌐 {lang.toUpperCase()}</button>
+            <ThemeToggle />
+          </div>
+        </header>
+        {!configOk && <SetupBanner />}
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/callback" element={<Callback />} />
+          <Route path="/role/:code" element={<RolePage />} />
+        </Routes>
+      </div>
+    </LangCtx.Provider>
+  );
+}
+
+function destLabel(k, t) {
+  return k === "spotify" ? "Spotify" : t("dest_youtube");
+}
+
+function SetupBanner() {
+  const { t } = useT();
+  return (
+    <div className="banner">
+      <b>{t("setup_bold")}</b>{t("setup_rest")}
+    </div>
+  );
+}
+
+/* ---------------- home ---------------- */
+function Home() {
+  const { t } = useT();
+  const nav = useNavigate();
+  const [name, setName] = useState("");
+  const [dest, setDest] = useState("spotify");
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function create() {
+    if (!name.trim()) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const role = await createRole(name.trim(), dest);
+      nav(`/role/${role.code}`);
+    } catch (e) {
+      setErr(e.message || t("create_err"));
+    } finally {
+      setBusy(false);
+    }
+  }
+  function enter() {
+    if (code.trim().length >= 3) nav(`/role/${code.trim().toUpperCase()}`);
+  }
+
+  const DEST = {
+    spotify: { icon: "🎧", ready: true },
+    youtube: { icon: "📺", ready: youtubeReady },
+  };
+
+  return (
+    <>
+      <p className="tagline">{t("tagline")}</p>
+      <div className="cards2">
+        <div className="card">
+          <p className="eyebrow">{t("create_hangout")}</p>
+          <div className="field">
+            <label htmlFor="rn">{t("hangout_name")}</label>
+            <input id="rn" value={name} onChange={(e) => setName(e.target.value)}
+              placeholder={t("hangout_name_ph")} maxLength={40}
+              onKeyDown={(e) => e.key === "Enter" && create()} />
+          </div>
+          <div className="field">
+            <label>{t("where_play")}</label>
+            <div className="seg">
+              {Object.entries(DEST).map(([k, v]) => (
+                <button key={k} className={dest === k ? "on" : ""} onClick={() => v.ready && setDest(k)}
+                  disabled={!v.ready} title={v.ready ? "" : t("soon")}>
+                  {v.icon} {destLabel(k, t)}{!v.ready && ` (${t("soon")})`}
+                </button>
+              ))}
+            </div>
+          </div>
+          <button className="btn wide" onClick={create} disabled={busy || !configOk}>
+            {busy ? t("creating") : t("create_btn")}
+          </button>
+        </div>
+        <div className="card">
+          <p className="eyebrow">{t("join_hangout")}</p>
+          <div className="field">
+            <label htmlFor="rc">{t("hangout_code")}</label>
+            <input id="rc" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())}
+              placeholder={t("code_ph")} maxLength={6}
+              onKeyDown={(e) => e.key === "Enter" && enter()} />
+          </div>
+          <button className="btn ghost wide" onClick={enter} disabled={!configOk}>{t("join_btn")}</button>
+        </div>
+      </div>
+      {err && <p className="err">{err}</p>}
+    </>
+  );
+}
+
+/* ---------------- callback (login do Spotify, só pra exportar) ---------------- */
+function Callback() {
+  const { t } = useT();
+  const nav = useNavigate();
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    sp.handleCallback()
+      .then((state) => nav(state || "/", { replace: true }))
+      .catch((e) => setErr(e.message));
+  }, [nav]);
+  return (
+    <div className="card center">
+      {err ? <p className="err">{err}</p> : <p>{t("connecting_spotify")}</p>}
+    </div>
+  );
+}
+
+/* ---------------- página do rolê ---------------- */
+function RolePage() {
+  const { t } = useT();
+  const { code } = useParams();
+  const [role, setRole] = useState(null);
+  const [loadErr, setLoadErr] = useState("");
+  const [data, setData] = useState({ participants: [], tracks: [] });
+  const [loggedIn, setLoggedIn] = useState(sp.isLoggedIn());
+
+  useEffect(() => {
+    getRole(code).then((r) => { if (r) setRole(r); else setLoadErr(t("role_not_found")); })
+      .catch((e) => setLoadErr(e.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code]);
+
+  const refresh = useCallback(async () => {
+    if (!role) return;
+    setData(await loadRoleData(role.id));
+  }, [role]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  if (loadErr) return <p className="err">{loadErr}</p>;
+  if (!role) return <div className="card center">{t("loading_role")}</div>;
+
+  return (
+    <>
+      <div className="rolehead card">
+        <div>
+          <p className="eyebrow">{t("role_label")} · {DEST_ICON[role.destination] || ""} {destLabel(role.destination, t)}</p>
+          <h2>{role.name}</h2>
+        </div>
+        <ShareBox code={role.code} />
+      </div>
+
+      {loggedIn
+        ? <MyPicks role={role} onSaved={refresh} onLogout={() => setLoggedIn(false)} />
+        : <ConnectCard onLogin={() => sp.login()} />}
+      <Blend role={role} data={data} onRefresh={refresh} />
+    </>
+  );
+}
+
+const DEST_ICON = { spotify: "🎧", youtube: "📺" };
+
+function ShareBox({ code }) {
+  const { t } = useT();
+  const [copied, setCopied] = useState(false);
+  const url = `${window.location.origin}/role/${code}`;
+  function copy() {
+    navigator.clipboard?.writeText(url).then(() => {
+      setCopied(true); setTimeout(() => setCopied(false), 1800);
+    });
+  }
+  return (
+    <div className="share">
+      <div className="code">{code}</div>
+      <button className="btn sm" onClick={copy}>{copied ? t("copied") : t("copy_link")}</button>
+    </div>
+  );
+}
+
+/* ---------------- conectar (login do Spotify) ---------------- */
+function ConnectCard({ onLogin }) {
+  const { t } = useT();
+  return (
+    <div className="card center">
+      <p className="eyebrow">{t("your_turn")}</p>
+      <p className="muted" style={{ marginTop: 0, marginBottom: 14 }}>{t("connect_desc")}</p>
+      <button className="btn wide green" onClick={onLogin} disabled={!configOk}>{t("connect_spotify")}</button>
+    </div>
+  );
+}
+
+/* ---------------- minhas músicas (mais ouvidas + busca + colar playlist) ---------------- */
+function MyPicks({ role, onSaved, onLogout }) {
+  const { t } = useT();
+  const [name, setName] = useState("");
+  const [range, setRange] = useState("medium_term");
+  const [tops, setTops] = useState([]);
+  const [selected, setSelected] = useState({});
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [status, setStatus] = useState("");
+  const [ready, setReady] = useState(false);
+  const [plName, setPlName] = useState("");
+  const [plUrl, setPlUrl] = useState("");
+  const [plBusy, setPlBusy] = useState(false);
+  const [mode, setMode] = useState("tops");
+  const [showHelp, setShowHelp] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const profile = await sp.getMe();
+        setName((n) => n || profile.display_name || "");
+        const tk = await sp.getTopTracks(range, 30);
+        setTops(tk);
+        const sel = {};
+        tk.slice(0, 15).forEach((x) => (sel[x.uri] = { ...x, source: "top" }));
+        setSelected(sel);
+        setReady(true);
+      } catch (e) {
+        setStatus("⚠️ " + e.message);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function changeRange(r) {
+    setRange(r);
+    try { setTops(await sp.getTopTracks(r, 30)); } catch (e) { setStatus("⚠️ " + e.message); }
+  }
+  function toggle(track, source) {
+    setSelected((s) => {
+      const n = { ...s };
+      if (n[track.uri]) delete n[track.uri];
+      else n[track.uri] = { ...track, source };
+      return n;
+    });
+  }
+  async function doSearch() {
+    if (!query.trim()) return;
+    try { setResults(await sp.searchTracks(query, 12)); } catch (e) { setStatus("⚠️ " + e.message); }
+  }
+  async function addPlaylist() {
+    if (!plName.trim()) return setStatus(t("err_whose"));
+    if (!plUrl.trim()) return setStatus(t("err_pastelink"));
+    setPlBusy(true);
+    try {
+      setStatus(t("reading_pl", plName.trim()));
+      let tracks = await sp.getPlaylistTracks(plUrl.trim());
+      if (!tracks.length) throw new Error(t("err_empty_pl"));
+      setStatus(t("analyzing"));
+      tracks = await enrichTags(tracks.map((tk) => ({ ...tk, source: "playlist" })));
+      const p = await joinRole(role.id, plName.trim());
+      await saveTracks(role.id, p.id, tracks);
+      setStatus(t("added_pl", tracks.length, plName.trim()));
+      setPlName(""); setPlUrl("");
+      onSaved();
+    } catch (e) {
+      setStatus("⚠️ " + e.message);
+    } finally {
+      setPlBusy(false);
+    }
+  }
+  async function save() {
+    if (!name.trim()) return setStatus(t("err_name"));
+    try {
+      setStatus(t("analyzing"));
+      const enriched = await enrichTags(Object.values(selected));
+      const p = await joinRole(role.id, name.trim());
+      await saveTracks(role.id, p.id, enriched);
+      setStatus(t("saved_ok", Object.keys(selected).length));
+      onSaved();
+    } catch (e) {
+      setStatus("⚠️ " + e.message);
+    }
+  }
+
+  const count = Object.keys(selected).length;
+  return (
+    <div className="card">
+      <div className="tabs">
+        <button className={mode === "tops" ? "on" : ""} onClick={() => setMode("tops")}>{t("tab_tops")}</button>
+        <button className={mode === "playlist" ? "on" : ""} onClick={() => setMode("playlist")}>{t("tab_playlist")}</button>
+      </div>
+
+      {mode === "tops" && (
+        <>
+          <div className="field">
+            <label htmlFor="dn">{t("your_name")}</label>
+            <input id="dn" value={name} onChange={(e) => setName(e.target.value)} maxLength={24}
+              placeholder={t("your_name_ph")} />
+          </div>
+
+          <div className="segrow">
+            <span className="seglabel">{t("top_played")}</span>
+            <div className="seg">
+              {[["short_term", t("range_short")], ["medium_term", t("range_med")], ["long_term", t("range_long")]].map(([v, l]) => (
+                <button key={v} className={range === v ? "on" : ""} onClick={() => changeRange(v)}>{l}</button>
+              ))}
+            </div>
+          </div>
+
+          {!ready && !status && <p className="muted">{t("pulling_tops")}</p>}
+          <div className="tracklist">
+            {tops.map((tk) => (
+              <TrackRow key={tk.uri} t={tk} on={!!selected[tk.uri]} onClick={() => toggle(tk, "top")} />
+            ))}
+          </div>
+
+          <div className="searchbox">
+            <input value={query} onChange={(e) => setQuery(e.target.value)}
+              placeholder={t("search_ph")}
+              onKeyDown={(e) => e.key === "Enter" && doSearch()} />
+            <button className="btn sm" onClick={doSearch}>{t("search_btn")}</button>
+          </div>
+          {results.length > 0 && (
+            <div className="tracklist">
+              {results.map((tk) => (
+                <TrackRow key={tk.uri} t={tk} on={!!selected[tk.uri]} onClick={() => toggle(tk, "manual")} />
+              ))}
+            </div>
+          )}
+
+          <button className="btn wide" onClick={save} disabled={count === 0}>{t("save_btn", count)}</button>
+        </>
+      )}
+
+      {mode === "playlist" && (
+        <div>
+          <p className="muted" style={{ marginTop: 0 }}>
+            {t("paste_desc_pre")}<b>{t("paste_desc_bold")}</b>{t("paste_desc_post")}{" "}
+            <button className="help" onClick={() => setShowHelp((v) => !v)} aria-label="?">?</button>
+          </p>
+          {showHelp && <div className="helpbox">{t("paste_help")}</div>}
+          <div className="field">
+            <label htmlFor="pln">{t("whose")}</label>
+            <input id="pln" value={plName} onChange={(e) => setPlName(e.target.value)}
+              placeholder={t("whose_ph")} maxLength={24} />
+          </div>
+          <div className="field">
+            <label htmlFor="plu">{t("playlist_link")}</label>
+            <input id="plu" value={plUrl} onChange={(e) => setPlUrl(e.target.value)}
+              placeholder="https://open.spotify.com/playlist/..."
+              onKeyDown={(e) => e.key === "Enter" && addPlaylist()} />
+          </div>
+          <button className="btn wide" onClick={addPlaylist} disabled={plBusy}>
+            {plBusy ? t("reading") : t("add_playlist_btn")}
+          </button>
+        </div>
+      )}
+
+      <div className="row-right">
+        <button className="linkbtn" onClick={() => { sp.logout(); onLogout(); }}>{t("logout")}</button>
+      </div>
+      {status && <p className="muted" style={{ marginTop: 10 }}>{status}</p>}
+    </div>
+  );
+}
+
+function TrackRow({ t, on, onClick }) {
+  return (
+    <button className={"trackrow" + (on ? " on" : "")} onClick={onClick}>
+      <span className="check">{on ? "✓" : "+"}</span>
+      {t.art ? <img src={t.art} alt="" className="art" /> : <span className="art ph" />}
+      <span className="meta">
+        <span className="tt">{t.title}</span>
+        <span className="aa">{t.artist}</span>
+      </span>
+    </button>
+  );
+}
+
+/* ---------------- blend + exportar ---------------- */
+function Blend({ role, data, onRefresh }) {
+  const { t, lang } = useT();
+  const [result, setResult] = useState(null);
+  const [exporting, setExporting] = useState(false);
+  const [link, setLink] = useState("");
+  const [err, setErr] = useState("");
+  const [exportMsg, setExportMsg] = useState("");
+  const [enrichOpen, setEnrichOpen] = useState(false);
+  const [enrichVibe, setEnrichVibe] = useState(null);
+  const [suggestions, setSuggestions] = useState([]);
+  const [picked, setPicked] = useState({});
+  const [suggBusy, setSuggBusy] = useState(false);
+  const [suggMsg, setSuggMsg] = useState("");
+
+  const regen = useCallback(() => {
+    setResult(buildBlend(data.participants, data.tracks));
+  }, [data]);
+  useEffect(() => { regen(); }, [regen]);
+
+  async function findSuggestions(vibe) {
+    if (!sp.isLoggedIn()) { setSuggMsg(t("sugg_login")); return; }
+    setEnrichVibe(vibe); setSuggBusy(true); setSuggestions([]); setPicked({}); setSuggMsg(t("sugg_mining"));
+    try {
+      const existingArtists = new Set(data.tracks.map((tk) => firstArtistName(tk).toLowerCase()));
+      const existingUris = new Set(data.tracks.map((tk) => tk.uri));
+      let seeds = data.tracks.filter((tk) => vibeOf(moodScore(tk.genre)).key === vibe.key);
+      if (!seeds.length) seeds = data.tracks;
+      const cand = new Map();
+      seeds.forEach((tk) => String(tk.similar || "").split(";").map((s) => s.trim().toLowerCase()).filter(Boolean)
+        .forEach((a) => { if (!existingArtists.has(a)) cand.set(a, (cand.get(a) || 0) + 1); }));
+      const ranked = [...cand.entries()].sort((a, b) => b[1] - a[1]).map((e) => e[0]).slice(0, 16);
+      const found = [];
+      for (const artist of ranked) {
+        if (found.length >= 8) break;
+        try {
+          const r = await sp.searchTracks(`artist:${artist}`, 1);
+          if (r[0] && !existingUris.has(r[0].uri) && !found.some((f) => f.uri === r[0].uri)) found.push(r[0]);
+        } catch {}
+      }
+      setSuggestions(found);
+      setSuggMsg(found.length ? "" : t("sugg_none"));
+    } catch (e) {
+      setSuggMsg("⚠️ " + e.message);
+    } finally {
+      setSuggBusy(false);
+    }
+  }
+
+  async function addSuggestions() {
+    const chosen = suggestions.filter((s) => picked[s.uri]);
+    if (!chosen.length) return;
+    setSuggBusy(true); setSuggMsg(t("analyzing"));
+    try {
+      const enriched = await enrichTags(chosen.map((tk) => ({ ...tk, source: "sugestão" })));
+      const p = await joinRole(role.id, SUGG_NAME);
+      await addTracks(role.id, p.id, enriched);
+      setSuggestions((prev) => prev.filter((s) => !picked[s.uri]));
+      setPicked({}); setSuggMsg(t("sugg_added", chosen.length));
+      onRefresh();
+    } catch (e) {
+      setSuggMsg("⚠️ " + e.message);
+    } finally {
+      setSuggBusy(false);
+    }
+  }
+
+  if (!data.participants.length) {
+    return (
+      <div className="card center">
+        <p className="muted">{t("empty_blend")}</p>
+      </div>
+    );
+  }
+  if (!result) return null;
+
+  const { order, metrics } = result;
+  const top = metrics.active.slice().sort((a, b) => metrics.counts[b.id] - metrics.counts[a.id])[0];
+  const topShare = top ? metrics.counts[top.id] / metrics.total : 0;
+  const pickedCount = Object.values(picked).filter(Boolean).length;
+
+  async function exportSpotify() {
+    if (!sp.isLoggedIn()) { sp.login(); return; }
+    setExporting(true); setErr("");
+    try {
+      const uris = order.map((tk) => tk.uri);
+      const url = await sp.createPlaylist(
+        `Playlist da Galera — ${role.name}`,
+        uris,
+        `Playlist da Galera · ${metrics.active.length} 🎧`
+      );
+      setLink(url);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function exportYouTube() {
+    setExporting(true); setErr(""); setExportMsg("");
+    try {
+      const url = await yt.createPlaylist(
+        `Playlist da Galera — ${role.name}`,
+        order,
+        "Playlist da Galera 🎧",
+        (i, n) => setExportMsg(t("yt_progress", i, n))
+      );
+      setLink(url);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setExporting(false); setExportMsg("");
+    }
+  }
+
+  return (
+    <div className="card">
+      <div className="queue-head">
+        <h2>{t("the_playlist")}</h2>
+        <div className="actions">
+          <button className="btn ghost sm" onClick={onRefresh}>{t("refresh")}</button>
+          <button className="btn ghost sm" onClick={regen}>{t("reshuffle")}</button>
+          <button className={"btn sm" + (enrichOpen ? "" : " ghost")} onClick={() => setEnrichOpen((v) => !v)}>{t("enrich")}</button>
+          {role.destination === "spotify" ? (
+            <button className="btn sm green" onClick={exportSpotify} disabled={exporting}>
+              {exporting ? t("creating") : sp.isLoggedIn() ? t("create_spotify") : t("connect_create_spotify")}
+            </button>
+          ) : youtubeReady ? (
+            <button className="btn sm yt" onClick={exportYouTube} disabled={exporting}>
+              {exporting ? t("creating") : t("create_youtube")}
+            </button>
+          ) : (
+            <span className="muted">{t("yt_soon")}</span>
+          )}
+        </div>
+      </div>
+
+      {link && (
+        <a className="banner ok" href={link} target="_blank" rel="noreferrer">
+          {role.destination === "youtube" ? t("yt_created") : t("pl_created")}
+        </a>
+      )}
+      {exporting && exportMsg && <p className="muted">{exportMsg}</p>}
+      {err && <p className="err">{err}</p>}
+
+      <div className="stats">
+        <div className={"stat score" + (metrics.flow < 55 ? " low" : metrics.flow < 78 ? " mid" : "")}>
+          <div className="k">{t("flow_label")}</div>
+          <div className="v">{metrics.flow}</div>
+          <div className="sub">{metrics.flow >= 78 ? t("flow_hi") : metrics.flow >= 55 ? t("flow_mid") : t("flow_low")}</div>
+        </div>
+        <div className={"stat score" + (metrics.score < 55 ? " low" : metrics.score < 78 ? " mid" : "")}>
+          <div className="k">{t("anti_label")}</div>
+          <div className="v">{metrics.score}</div>
+          <div className="sub">{t("anti_sub", metrics.active.length, metrics.anchorCount, metrics.hinos)}</div>
+        </div>
+      </div>
+
+      {enrichOpen && (
+        <div className="enrich">
+          <p className="eyebrow" style={{ margin: "0 0 10px" }}>{t("enrich_title")}</p>
+          <div className="vibepick">
+            {VIBES.map((vb) => (
+              <button key={vb.key} className={enrichVibe?.key === vb.key ? "on" : ""}
+                onClick={() => findSuggestions(vb)} disabled={suggBusy}>
+                {vb.e} {VIBE_LABELS[lang][vb.key]}
+              </button>
+            ))}
+          </div>
+          {suggMsg && <p className="muted" style={{ margin: "10px 0 0" }}>{suggBusy ? "⏳ " : ""}{suggMsg}</p>}
+          {suggestions.length > 0 && (
+            <>
+              <div className="tracklist" style={{ marginTop: 12 }}>
+                {suggestions.map((s) => (
+                  <TrackRow key={s.uri} t={s} on={!!picked[s.uri]}
+                    onClick={() => setPicked((p) => ({ ...p, [s.uri]: !p[s.uri] }))} />
+                ))}
+              </div>
+              <button className="btn wide" onClick={addSuggestions} disabled={suggBusy || !pickedCount}>
+                {t("add_sugg", pickedCount)}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {top && metrics.active.length > 1 && (
+        <div className={"flag" + (topShare <= 0.45 ? " ok" : "")}>
+          {topShare > 0.45 ? t("dominating", top.display_name, Math.round(topShare * 100)) : t("democratic")}
+        </div>
+      )}
+
+      <div className="queue">
+        {order.map((tk, i) => {
+          const v = vibeOf(tk.mood);
+          return (
+            <div className={"track" + (tk.anchor ? " anchor" : "")} key={tk.uri + i}>
+              <div className="num">{i + 1}</div>
+              {tk.art ? <img src={tk.art} className="art" alt="" /> : <span className="art ph" />}
+              <div className="info">
+                <div className="tt">{tk.title}{tk.hino && <span className="hino" title={t("hino_tip")}> 🔥</span>}</div>
+                <div className="aa">
+                  {tk.artist}
+                  <span className="vibe" style={{ color: v.color, borderColor: v.color }}>{v.e} {VIBE_LABELS[lang][v.key]}</span>
+                </div>
+              </div>
+              <div className="who">
+                {tk.anchor ? <span className="pill">{t("everyone")}</span> : tk.ownerNames[0]}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- tema ---------------- */
+function ThemeToggle() {
+  function toggle() {
+    const cur = document.documentElement.getAttribute("data-theme");
+    const isDark = cur ? cur === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    const next = isDark ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    try { localStorage.setItem("pdg_theme", next); } catch {}
+  }
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem("pdg_theme");
+      if (s) document.documentElement.setAttribute("data-theme", s);
+    } catch {}
+  }, []);
+  return <button className="theme-btn" onClick={toggle} aria-label="Tema">◑</button>;
+}

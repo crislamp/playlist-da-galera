@@ -580,7 +580,7 @@ function MyPicks({ role, onSaved }) {
     setYpBusy(true);
     try {
       setStatus(t("reading_pl", ypName.trim()));
-      let tracks = await importYtPlaylist(ypUrl.trim());
+      let tracks = (await importYtPlaylist(ypUrl.trim())).slice(0, 40);
       if (!tracks.length) throw new Error(t("err_empty_pl"));
       setStatus(t("analyzing"));
       tracks = await enrichTags(tracks.map((tk) => ({ ...tk, source: "youtube" })));

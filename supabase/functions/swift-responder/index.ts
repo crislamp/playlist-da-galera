@@ -7,8 +7,11 @@
 //  C) { ytsearch: [{uri,q}] } -> resolve videoIds pro player via SCRAPE da página
 //     pública do YouTube (sem cota); cai pra API oficial só se o scrape falhar
 //  D) { ytplaylist: "url" } -> importa playlist pública do YouTube (sem login)
+//  E) { spotifycreate: {name,description,tracks} } -> cria playlist no Spotify numa
+//     conta de serviço (refresh token) -> qualquer um exporta sem login nem teto de contas
 //
-// Secrets: SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, LASTFM_API_KEY, YT_API_KEY
+// Secrets: SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, LASTFM_API_KEY, YT_API_KEY,
+//          SPOTIFY_REFRESH_TOKEN (da conta que hospeda as playlists)
 // Slug publicado no Supabase: "swift-responder".
 // ------------------------------------------------------------------
 
@@ -173,6 +176,65 @@ Deno.serve(async (req) => {
         if (!pageToken) break;
       }
       return json({ tracks });
+    }
+
+    // ---------- MODO E: criar playlist no Spotify (conta de serviço, sem login) ----------
+    // usa um refresh_token de UMA conta pré-autorizada -> qualquer pessoa cria sem logar
+    // e sem o teto de contas do modo dev. Resolve no Spotify até faixas vindas do YouTube.
+    if (body.spotifycreate) {
+      const { name, description = "", tracks = [] } = body.spotifycreate;
+      const refresh = Deno.env.get("SPOTIFY_REFRESH_TOKEN");
+      const clientId = Deno.env.get("SPOTIFY_CLIENT_ID");
+      if (!refresh) throw new Error("Falta SPOTIFY_REFRESH_TOKEN nos secrets (autorize a conta uma vez).");
+      if (!clientId) throw new Error("Falta SPOTIFY_CLIENT_ID nos secrets.");
+
+      // token de USUÁRIO da conta de serviço (refresh via PKCE: só client_id)
+      const tr = await fetch("https://accounts.spotify.com/api/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: refresh, client_id: clientId }),
+      });
+      if (!tr.ok) throw new Error("Falha ao renovar o Spotify da conta de serviço: " + (await tr.text()));
+      const userToken = (await tr.json()).access_token;
+      const sapi = (path: string, opts: any = {}) =>
+        fetch("https://api.spotify.com/v1" + path, {
+          ...opts,
+          headers: { Authorization: "Bearer " + userToken, "Content-Type": "application/json", ...(opts.headers || {}) },
+        });
+
+      // resolve URIs: as nativas do Spotify vão direto; as de YouTube/etc via busca (app token)
+      const appToken = await spotifyToken();
+      const uris: string[] = [];
+      const seen = new Set<string>();
+      for (const t of tracks) {
+        let uri: string | null =
+          typeof t.uri === "string" && t.uri.startsWith("spotify:") ? t.uri : null;
+        if (!uri && t.title) {
+          const q = `${t.title} ${t.artist || ""}`.trim();
+          const sr = await fetch(
+            `https://api.spotify.com/v1/search?type=track&limit=1&market=BR&q=${encodeURIComponent(q)}`,
+            { headers: { Authorization: "Bearer " + appToken } }
+          );
+          if (sr.ok) uri = (await sr.json())?.tracks?.items?.[0]?.uri || null;
+        }
+        if (uri && !seen.has(uri)) { seen.add(uri); uris.push(uri); }
+      }
+      if (!uris.length) return json({ error: "no-tracks" }, 400);
+
+      const cr = await sapi("/me/playlists", {
+        method: "POST",
+        body: JSON.stringify({ name, description, public: true }),
+      });
+      if (!cr.ok) throw new Error("Spotify (criar): " + (await cr.text()));
+      const pl = await cr.json();
+      for (let i = 0; i < uris.length; i += 100) {
+        const ar = await sapi(`/playlists/${pl.id}/items`, {
+          method: "POST",
+          body: JSON.stringify({ uris: uris.slice(i, i + 100) }),
+        });
+        if (!ar.ok) throw new Error("Spotify (adicionar): " + (await ar.text()));
+      }
+      return json({ url: pl.external_urls?.spotify || `https://open.spotify.com/playlist/${pl.id}`, count: uris.length });
     }
 
     // ---------- MODO B: enriquecer com Last.fm ----------

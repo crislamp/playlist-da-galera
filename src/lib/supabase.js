@@ -93,6 +93,22 @@ export async function importYtPlaylist(url) {
   return tracks;
 }
 
+// cria a playlist no Spotify SEM login (via conta de serviço na Edge Function).
+// manda {uri,title,artist} pra resolver no Spotify até faixas que vieram do YouTube.
+export async function createSpotifyPlaylist(name, tracks, description = "") {
+  const payload = tracks.map((t) => ({ uri: t.uri, title: t.title, artist: t.artist }));
+  const { data, error } = await supabase.functions.invoke(RESOLVE_FN, {
+    body: { spotifycreate: { name, description, tracks: payload } },
+  });
+  if (error) {
+    let msg = "";
+    try { msg = (await error.context?.json?.())?.error || ""; } catch { /* sem corpo */ }
+    throw new Error(msg || "quota-or-error");
+  }
+  if (data?.error) throw new Error(data.error);
+  return { url: data?.url || null, count: data?.count || 0 };
+}
+
 export async function enrichTags(tracks) {
   if (!tracks.length) return tracks;
   const payload = tracks.map((t) => ({ artist: t.artist, title: t.title }));

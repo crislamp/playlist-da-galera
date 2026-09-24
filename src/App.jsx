@@ -17,6 +17,7 @@ import {
   getYtCache,
   saveYtCache,
   getVideoIds,
+  createSpotifyPlaylist,
 } from "./lib/supabase.js";
 import { buildBlend, moodScore } from "./lib/blend.js";
 
@@ -110,7 +111,7 @@ const STRINGS = {
     yt_quota: "Acabou a cota de busca do YouTube por hoje 😕 As músicas do Spotify precisam procurar o clipe (limite de ~100/dia). Reseta amanhã de madrugada. Dica: clipes de playlists do YouTube tocam na hora, sem limite.",
     yt_quota_partial: (n) => `Toquei ${n} que já estavam prontas 🎧 As novas do Spotify não deram porque a busca do YouTube atingiu o limite de hoje (reseta amanhã). Playlists do YouTube tocam sem esse limite.`,
     yt_noclips: "Não achei os clipes no YouTube 😕",
-    no_sp_tracks: "Essas faixas vieram do YouTube — não dá pra criar no Spotify. Usa o ▶️ Tocar ou o 📺 YouTube.",
+    no_sp_tracks: "Não achei essas músicas no Spotify 😕 Tenta o ▶️ Tocar ou o 📺 YouTube.",
     play_btn: "▶️ Tocar",
     preparing: "Preparando…",
     no_videos: "Não consegui preparar os clipes 😕",
@@ -221,7 +222,7 @@ const STRINGS = {
     yt_quota: "Out of YouTube search quota for today 😕 Spotify songs have to look up their clip (~100/day limit). It resets overnight. Tip: clips from YouTube playlists play instantly, no limit.",
     yt_quota_partial: (n) => `Played ${n} that were already prepared 🎧 The new Spotify ones didn't make it — YouTube search hit today's limit (resets tomorrow). YouTube playlists play without this limit.`,
     yt_noclips: "Couldn't find the clips on YouTube 😕",
-    no_sp_tracks: "These tracks came from YouTube — can't create on Spotify. Use ▶️ Play or 📺 YouTube.",
+    no_sp_tracks: "Couldn't find these songs on Spotify 😕 Try ▶️ Play or 📺 YouTube.",
     play_btn: "▶️ Play",
     preparing: "Getting it ready…",
     no_videos: "Couldn't prepare the clips 😕",
@@ -916,19 +917,18 @@ function Blend({ role, data, onRefresh }) {
   const pickedCount = Object.values(picked).filter(Boolean).length;
 
   async function exportSpotify() {
-    if (!sp.isLoggedIn()) { sp.login(); return; }
     setExportingWhich("spotify"); setErr(""); setLink("");
     try {
-      const uris = order.map((tk) => tk.uri).filter((u) => u.startsWith("spotify:"));
-      if (!uris.length) { setErr(t("no_sp_tracks")); return; }
-      const url = await sp.createPlaylist(
+      // sem login: a Edge Function cria numa conta de serviço e resolve até faixas do YouTube
+      const { url, count } = await createSpotifyPlaylist(
         `Playlist da Galera — ${role.name}`,
-        uris,
+        order,
         `Playlist da Galera · ${metrics.active.length} 🎧`
       );
+      if (!count || !url) { setErr(t("no_sp_tracks")); return; }
       setLink(url); setLinkKind("spotify");
     } catch (e) {
-      setErr(e.message);
+      setErr(e.message === "no-tracks" ? t("no_sp_tracks") : e.message);
     } finally {
       setExportingWhich(null);
     }
@@ -981,8 +981,8 @@ function Blend({ role, data, onRefresh }) {
           <button className="btn ghost sm" onClick={onRefresh}>{t("refresh")}</button>
           <button className="btn ghost sm" onClick={regen}>{t("reshuffle")}</button>
           <button className={"btn sm" + (enrichOpen ? "" : " ghost")} onClick={() => setEnrichOpen((v) => !v)}>{t("enrich")}</button>
-          <button className="btn sm expsp" onClick={() => (sp.isLoggedIn() ? exportSpotify() : setBetaMsg("spotify"))} disabled={!!exportingWhich}>
-            {exportingWhich === "spotify" ? t("creating") : <>🎧 Spotify<sup className="betatag">{t("beta_tag")}</sup></>}
+          <button className="btn sm expsp" onClick={exportSpotify} disabled={!!exportingWhich}>
+            {exportingWhich === "spotify" ? t("creating") : "🎧 Spotify"}
           </button>
           {youtubeReady && (
             <button className="btn sm expyt" onClick={() => (yt.isLoggedIn() ? exportYouTube() : setBetaMsg("youtube"))} disabled={!!exportingWhich}>

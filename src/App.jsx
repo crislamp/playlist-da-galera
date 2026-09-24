@@ -12,6 +12,8 @@ import {
   addTracks,
   loadRoleData,
   enrichTags,
+  getYtCache,
+  saveYtCache,
 } from "./lib/supabase.js";
 import { buildBlend, moodScore } from "./lib/blend.js";
 
@@ -93,6 +95,8 @@ const STRINGS = {
     create_youtube: "Criar no YouTube",
     yt_created: "✅ Playlist criada! Abrir no YouTube →",
     yt_progress: (i, n) => `Procurando os clipes… ${i}/${n}`,
+    yt_quota: "Limite diário do YouTube atingido 😕 Tenta de novo amanhã (a cota reseta todo dia).",
+    yt_noclips: "Não achei os clipes no YouTube 😕",
     pl_created: "✅ Playlist criada! Abrir no Spotify →",
     flow_label: "Fluidez das transições",
     flow_hi: "Flui liso 🌊",
@@ -180,6 +184,8 @@ const STRINGS = {
     create_youtube: "Create on YouTube",
     yt_created: "✅ Playlist created! Open on YouTube →",
     yt_progress: (i, n) => `Finding the clips… ${i}/${n}`,
+    yt_quota: "YouTube daily limit reached 😕 Try again tomorrow (the quota resets daily).",
+    yt_noclips: "Couldn't find the clips on YouTube 😕",
     pl_created: "✅ Playlist created! Open in Spotify →",
     flow_label: "Transition flow",
     flow_hi: "Flows smooth 🌊",
@@ -734,15 +740,19 @@ function Blend({ role, data, onRefresh }) {
   async function exportYouTube() {
     setExportingWhich("youtube"); setErr(""); setExportMsg(""); setLink("");
     try {
-      const url = await yt.createPlaylist(
+      const cache = await getYtCache(order.map((tk) => tk.uri));
+      const { url, resolved } = await yt.createPlaylist(
         `Playlist da Galera — ${role.name}`,
         order,
         "Playlist da Galera 🎧",
-        (i, n) => setExportMsg(t("yt_progress", i, n))
+        (i, n) => setExportMsg(t("yt_progress", i, n)),
+        cache
       );
+      if (resolved && Object.keys(resolved).length) saveYtCache(resolved).catch(() => {});
       setLink(url); setLinkKind("youtube");
     } catch (e) {
-      setErr(e.message);
+      const msg = e.message === "quota" ? t("yt_quota") : e.message === "no-clips" ? t("yt_noclips") : e.message;
+      setErr(msg);
     } finally {
       setExportingWhich(null); setExportMsg("");
     }

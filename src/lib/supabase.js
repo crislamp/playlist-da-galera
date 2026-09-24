@@ -126,3 +126,22 @@ export async function loadRoleData(roleId) {
   ]);
   return { participants: participants || [], tracks: tracks || [] };
 }
+
+// cache do YouTube: uri do Spotify -> videoId (pra não gastar cota buscando de novo)
+export async function getYtCache(uris) {
+  if (!uris || !uris.length) return {};
+  const map = {};
+  // busca em lotes (o filtro "in" tem limite de tamanho de URL)
+  for (let i = 0; i < uris.length; i += 200) {
+    const batch = uris.slice(i, i + 200);
+    const { data } = await supabase.from("yt_cache").select("uri,video_id").in("uri", batch);
+    (data || []).forEach((r) => { if (r.video_id) map[r.uri] = r.video_id; });
+  }
+  return map;
+}
+
+export async function saveYtCache(map) {
+  const rows = Object.entries(map || {}).map(([uri, video_id]) => ({ uri, video_id }));
+  if (!rows.length) return;
+  await supabase.from("yt_cache").upsert(rows, { onConflict: "uri" });
+}

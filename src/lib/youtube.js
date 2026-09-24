@@ -59,7 +59,11 @@ async function yt(path, opts = {}) {
     ...opts,
     headers: { Authorization: "Bearer " + t, "Content-Type": "application/json", ...(opts.headers || {}) },
   });
-  if (!res.ok) throw new Error("YouTube " + res.status + ": " + (await res.text()));
+  if (!res.ok) {
+    const body = await res.text();
+    if (res.status === 403 && /quota/i.test(body)) throw new Error("quota");
+    throw new Error("YouTube " + res.status + ": " + body);
+  }
   return res.json();
 }
 
@@ -78,23 +82,31 @@ async function pool(items, limit, fn) {
   );
 }
 
-// Cria a playlist de clipes: busca cada faixa, cria a playlist e adiciona em ordem.
-export async function createPlaylist(name, tracks, description = "", onProgress) {
+// Cria a playlist de clipes. Usa o cache (uri->videoId) e busca só o que falta.
+// Retorna { url, resolved } — resolved = novos videoIds pra gravar no cache.
+export async function createPlaylist(name, tracks, description = "", onProgress, cachedIds = {}) {
   await token(); // dispara o login se preciso
-  // 1) acha o videoId de cada faixa (mantém a ordem)
+  // 1) resolve o videoId de cada faixa (cache primeiro; busca só os que faltam)
   const videoIds = new Array(tracks.length).fill(null);
+  const resolved = {}; // uri -> videoId (novos, pra cachear)
   let done = 0;
   let firstErr = null;
   await pool(tracks, 5, async (tk, idx) => {
-    try { videoIds[idx] = await searchVideoId(`${tk.title} ${tk.artist}`); }
-    catch (e) { if (!firstErr) firstErr = e; }
+    const cached = cachedIds[tk.uri];
+    if (cached) {
+      videoIds[idx] = cached;
+    } else {
+      try {
+        const id = await searchVideoId(`${tk.title} ${tk.artist}`);
+        videoIds[idx] = id;
+        if (id) resolved[tk.uri] = id;
+      } catch (e) { if (!firstErr) firstErr = e; }
+    }
     done++;
     onProgress && onProgress(done, tracks.length);
   });
   const ids = videoIds.filter(Boolean);
-  if (!ids.length) {
-    throw new Error(firstErr ? firstErr.message : "Não achei os clipes no YouTube.");
-  }
+  if (!ids.length) throw new Error(firstErr ? firstErr.message : "no-clips");
 
   // 2) cria a playlist (não listada)
   const pl = await yt(`/playlists?part=snippet,status`, {
@@ -109,5 +121,5 @@ export async function createPlaylist(name, tracks, description = "", onProgress)
       body: JSON.stringify({ snippet: { playlistId: pl.id, resourceId: { kind: "youtube#video", videoId } } }),
     });
   }
-  return `https://www.youtube.com/playlist?list=${pl.id}`;
+  return { url: `https://www.youtube.com/playlist?list=${pl.id}`, resolved };
 }

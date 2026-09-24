@@ -108,6 +108,12 @@ const STRINGS = {
     no_videos: "Não consegui preparar os clipes 😕",
     up_next: "A seguir",
     now_playing: "Tocando agora",
+    beta_tag: "beta",
+    beta_spotify: "🔒 Criar no Spotify é beta — precisa conectar sua conta, e por enquanto o Spotify libera só algumas pessoas. Pra ouvir sem login, usa o ▶️ Tocar!",
+    beta_youtube: "🔒 Criar no YouTube é beta — precisa conectar sua conta Google e a cota diária é limitada. Pra ouvir sem login, usa o ▶️ Tocar!",
+    beta_connect: "Conectar mesmo assim",
+    beta_dismiss: "Deixa, vou no ▶️ Tocar",
+    connect_beta_note: "Beta: por enquanto o login do Spotify é limitado a poucas contas.",
     pl_created: "✅ Playlist criada! Abrir no Spotify →",
     flow_label: "Fluidez das transições",
     flow_hi: "Flui liso 🌊",
@@ -206,6 +212,12 @@ const STRINGS = {
     no_videos: "Couldn't prepare the clips 😕",
     up_next: "Up next",
     now_playing: "Now playing",
+    beta_tag: "beta",
+    beta_spotify: "🔒 Creating on Spotify is beta — you need to connect your account, and for now Spotify only allows a few people. To listen with no login, use ▶️ Play!",
+    beta_youtube: "🔒 Creating on YouTube is beta — you need to connect your Google account and the daily quota is limited. To listen with no login, use ▶️ Play!",
+    beta_connect: "Connect anyway",
+    beta_dismiss: "Nah, I'll use ▶️ Play",
+    connect_beta_note: "Beta: for now Spotify login is limited to a few accounts.",
     pl_created: "✅ Playlist created! Open in Spotify →",
     flow_label: "Transition flow",
     flow_hi: "Flows smooth 🌊",
@@ -567,6 +579,7 @@ function MyPicks({ role, onSaved }) {
     <div style={{ textAlign: "center", padding: "6px 0 4px" }}>
       <p className="muted" style={{ marginTop: 0 }}>{t("connect_prompt")}</p>
       <button className="btn green" onClick={() => sp.login()} disabled={!configOk}>{t("connect_btn")}</button>
+      <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>{t("connect_beta_note")}</p>
     </div>
   );
 
@@ -768,6 +781,7 @@ function Blend({ role, data, onRefresh }) {
   const [suggMsg, setSuggMsg] = useState("");
   const [playerTracks, setPlayerTracks] = useState(null);
   const [preparing, setPreparing] = useState(false);
+  const [betaMsg, setBetaMsg] = useState(null);
 
   const regen = useCallback(() => {
     setResult(buildBlend(data.participants, data.tracks));
@@ -898,12 +912,12 @@ function Blend({ role, data, onRefresh }) {
           <button className="btn ghost sm" onClick={onRefresh}>{t("refresh")}</button>
           <button className="btn ghost sm" onClick={regen}>{t("reshuffle")}</button>
           <button className={"btn sm" + (enrichOpen ? "" : " ghost")} onClick={() => setEnrichOpen((v) => !v)}>{t("enrich")}</button>
-          <button className="btn sm green" onClick={exportSpotify} disabled={!!exportingWhich}>
-            {exportingWhich === "spotify" ? t("creating") : "🎧 Spotify"}
+          <button className="btn sm green" onClick={() => (sp.isLoggedIn() ? exportSpotify() : setBetaMsg("spotify"))} disabled={!!exportingWhich}>
+            {exportingWhich === "spotify" ? t("creating") : <>🎧 Spotify<sup className="betatag">{t("beta_tag")}</sup></>}
           </button>
           {youtubeReady && (
-            <button className="btn sm yt" onClick={exportYouTube} disabled={!!exportingWhich}>
-              {exportingWhich === "youtube" ? t("creating") : "📺 YouTube"}
+            <button className="btn sm yt" onClick={() => (yt.isLoggedIn() ? exportYouTube() : setBetaMsg("youtube"))} disabled={!!exportingWhich}>
+              {exportingWhich === "youtube" ? t("creating") : <>📺 YouTube<sup className="betatag">{t("beta_tag")}</sup></>}
             </button>
           )}
         </div>
@@ -916,6 +930,20 @@ function Blend({ role, data, onRefresh }) {
       )}
       {exportingWhich && exportMsg && <p className="muted">{exportMsg}</p>}
       {err && <p className="err">{err}</p>}
+
+      {betaMsg && (
+        <div className="flag">
+          {betaMsg === "spotify" ? t("beta_spotify") : t("beta_youtube")}
+          <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className="btn sm ghost" onClick={() => {
+              const which = betaMsg; setBetaMsg(null);
+              if (which === "spotify") sp.login();
+              else yt.login().then(() => exportYouTube()).catch((e) => setErr(e.message));
+            }}>{t("beta_connect")}</button>
+            <button className="btn sm" onClick={() => { setBetaMsg(null); openPlayer(); }}>{t("beta_dismiss")}</button>
+          </div>
+        </div>
+      )}
 
       <div className="stats">
         <div className={"stat score" + (metrics.flow < 55 ? " low" : metrics.flow < 78 ? " mid" : "")}>

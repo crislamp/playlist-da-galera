@@ -42,6 +42,8 @@ const STRINGS = {
     code_ph: "Ex: K7QP",
     join_btn: "Entrar",
     create_err: "Deu ruim ao criar.",
+    err_name_role: "Dá um nome pro rolê 🙂",
+    err_code: "Coloca o código do rolê (ex: K7QP).",
     connecting_spotify: "Conectando ao Spotify…",
     role_not_found: "Rolê não encontrado.",
     loading_role: "Carregando rolê…",
@@ -127,6 +129,8 @@ const STRINGS = {
     code_ph: "e.g. K7QP",
     join_btn: "Join",
     create_err: "Couldn't create it.",
+    err_name_role: "Give the hangout a name 🙂",
+    err_code: "Enter the hangout code (e.g. K7QP).",
     connecting_spotify: "Connecting to Spotify…",
     role_not_found: "Hangout not found.",
     loading_role: "Loading hangout…",
@@ -279,17 +283,16 @@ function Home() {
   const { t } = useT();
   const nav = useNavigate();
   const [name, setName] = useState("");
-  const [dest, setDest] = useState("spotify");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
   async function create() {
-    if (!name.trim()) return;
+    if (!name.trim()) { setErr(t("err_name_role")); return; }
     setBusy(true);
     setErr("");
     try {
-      const role = await createRole(name.trim(), dest);
+      const role = await createRole(name.trim());
       nav(`/role/${role.code}`);
     } catch (e) {
       setErr(e.message || t("create_err"));
@@ -298,13 +301,9 @@ function Home() {
     }
   }
   function enter() {
-    if (code.trim().length >= 3) nav(`/role/${code.trim().toUpperCase()}`);
+    if (code.trim().length < 3) { setErr(t("err_code")); return; }
+    nav(`/role/${code.trim().toUpperCase()}`);
   }
-
-  const DEST = {
-    spotify: { icon: "🎧", ready: true },
-    youtube: { icon: "📺", ready: youtubeReady },
-  };
 
   return (
     <>
@@ -314,20 +313,9 @@ function Home() {
           <p className="eyebrow">{t("create_hangout")}</p>
           <div className="field">
             <label htmlFor="rn">{t("hangout_name")}</label>
-            <input id="rn" value={name} onChange={(e) => setName(e.target.value)}
+            <input id="rn" value={name} onChange={(e) => { setName(e.target.value); if (err) setErr(""); }}
               placeholder={t("hangout_name_ph")} maxLength={40}
               onKeyDown={(e) => e.key === "Enter" && create()} />
-          </div>
-          <div className="field">
-            <label>{t("where_play")}</label>
-            <div className="seg">
-              {Object.entries(DEST).map(([k, v]) => (
-                <button key={k} className={dest === k ? "on" : ""} onClick={() => v.ready && setDest(k)}
-                  disabled={!v.ready} title={v.ready ? "" : t("soon")}>
-                  {v.icon} {destLabel(k, t)}{!v.ready && ` (${t("soon")})`}
-                </button>
-              ))}
-            </div>
           </div>
           <button className="btn wide" onClick={create} disabled={busy || !configOk}>
             {busy ? t("creating") : t("create_btn")}
@@ -337,7 +325,7 @@ function Home() {
           <p className="eyebrow">{t("join_hangout")}</p>
           <div className="field">
             <label htmlFor="rc">{t("hangout_code")}</label>
-            <input id="rc" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())}
+            <input id="rc" value={code} onChange={(e) => { setCode(e.target.value.toUpperCase()); if (err) setErr(""); }}
               placeholder={t("code_ph")} maxLength={6}
               onKeyDown={(e) => e.key === "Enter" && enter()} />
           </div>
@@ -395,7 +383,7 @@ function RolePage() {
     <>
       <div className="rolehead card">
         <div>
-          <p className="eyebrow">{t("role_label")} · {DEST_ICON[role.destination] || ""} {destLabel(role.destination, t)}</p>
+          <p className="eyebrow">{t("role_label")} · 🎧 📺</p>
           <h2>{role.name}</h2>
         </div>
         <ShareBox code={role.code} />
@@ -625,8 +613,9 @@ function TrackRow({ t, on, onClick }) {
 function Blend({ role, data, onRefresh }) {
   const { t, lang } = useT();
   const [result, setResult] = useState(null);
-  const [exporting, setExporting] = useState(false);
+  const [exportingWhich, setExportingWhich] = useState(null);
   const [link, setLink] = useState("");
+  const [linkKind, setLinkKind] = useState("spotify");
   const [err, setErr] = useState("");
   const [exportMsg, setExportMsg] = useState("");
   const [enrichOpen, setEnrichOpen] = useState(false);
@@ -704,7 +693,7 @@ function Blend({ role, data, onRefresh }) {
 
   async function exportSpotify() {
     if (!sp.isLoggedIn()) { sp.login(); return; }
-    setExporting(true); setErr("");
+    setExportingWhich("spotify"); setErr(""); setLink("");
     try {
       const uris = order.map((tk) => tk.uri);
       const url = await sp.createPlaylist(
@@ -712,16 +701,16 @@ function Blend({ role, data, onRefresh }) {
         uris,
         `Playlist da Galera · ${metrics.active.length} 🎧`
       );
-      setLink(url);
+      setLink(url); setLinkKind("spotify");
     } catch (e) {
       setErr(e.message);
     } finally {
-      setExporting(false);
+      setExportingWhich(null);
     }
   }
 
   async function exportYouTube() {
-    setExporting(true); setErr(""); setExportMsg("");
+    setExportingWhich("youtube"); setErr(""); setExportMsg(""); setLink("");
     try {
       const url = await yt.createPlaylist(
         `Playlist da Galera — ${role.name}`,
@@ -729,11 +718,11 @@ function Blend({ role, data, onRefresh }) {
         "Playlist da Galera 🎧",
         (i, n) => setExportMsg(t("yt_progress", i, n))
       );
-      setLink(url);
+      setLink(url); setLinkKind("youtube");
     } catch (e) {
       setErr(e.message);
     } finally {
-      setExporting(false); setExportMsg("");
+      setExportingWhich(null); setExportMsg("");
     }
   }
 
@@ -745,26 +734,23 @@ function Blend({ role, data, onRefresh }) {
           <button className="btn ghost sm" onClick={onRefresh}>{t("refresh")}</button>
           <button className="btn ghost sm" onClick={regen}>{t("reshuffle")}</button>
           <button className={"btn sm" + (enrichOpen ? "" : " ghost")} onClick={() => setEnrichOpen((v) => !v)}>{t("enrich")}</button>
-          {role.destination === "spotify" ? (
-            <button className="btn sm green" onClick={exportSpotify} disabled={exporting}>
-              {exporting ? t("creating") : sp.isLoggedIn() ? t("create_spotify") : t("connect_create_spotify")}
+          <button className="btn sm green" onClick={exportSpotify} disabled={!!exportingWhich}>
+            {exportingWhich === "spotify" ? t("creating") : "🎧 Spotify"}
+          </button>
+          {youtubeReady && (
+            <button className="btn sm yt" onClick={exportYouTube} disabled={!!exportingWhich}>
+              {exportingWhich === "youtube" ? t("creating") : "📺 YouTube"}
             </button>
-          ) : youtubeReady ? (
-            <button className="btn sm yt" onClick={exportYouTube} disabled={exporting}>
-              {exporting ? t("creating") : t("create_youtube")}
-            </button>
-          ) : (
-            <span className="muted">{t("yt_soon")}</span>
           )}
         </div>
       </div>
 
       {link && (
         <a className="banner ok" href={link} target="_blank" rel="noreferrer">
-          {role.destination === "youtube" ? t("yt_created") : t("pl_created")}
+          {linkKind === "youtube" ? t("yt_created") : t("pl_created")}
         </a>
       )}
-      {exporting && exportMsg && <p className="muted">{exportMsg}</p>}
+      {exportingWhich && exportMsg && <p className="muted">{exportMsg}</p>}
       {err && <p className="err">{err}</p>}
 
       <div className="stats">

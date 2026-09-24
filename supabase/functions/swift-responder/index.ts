@@ -4,7 +4,8 @@
 //     (não conta como "usuário" -> a galera contribui SEM login, sem teto de 5)
 //  B) { tracks: [{artist,title}] } -> enriquece com Last.fm
 //     (tags de vibe da faixa + ouvintes + similares do artista)
-//  C) { ytsearch: [{uri,q}] } -> resolve videoIds do YouTube pro player (sem login)
+//  C) { ytsearch: [{uri,q}] } -> resolve videoIds pro player via SCRAPE da página
+//     pública do YouTube (sem cota); cai pra API oficial só se o scrape falhar
 //  D) { ytplaylist: "url" } -> importa playlist pública do YouTube (sem login)
 //
 // Secrets: SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, LASTFM_API_KEY, YT_API_KEY
@@ -37,6 +38,39 @@ function parseYtTitle(raw: string, channel: string) {
   const parts = s.split(/\s[-–—]\s/);
   if (parts.length >= 2) return { artist: parts[0].trim(), title: parts.slice(1).join(" - ").trim() };
   return { artist: String(channel || "").replace(/\s*-\s*Topic$/i, "").trim(), title: s };
+}
+
+// resolve o videoId lendo a PÁGINA PÚBLICA de resultados do YouTube (sem API, sem cota).
+// pega o 1º vídeo do resultado — que é o topo da busca (normalmente o clipe oficial).
+async function scrapeVideoId(q: string): Promise<string | null> {
+  try {
+    const r = await fetch(
+      `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}&hl=en&gl=US`,
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+          "Accept-Language": "en-US,en;q=0.9",
+          "Cookie": "CONSENT=YES+cb", // evita o muro de consentimento (UE)
+        },
+      }
+    );
+    if (!r.ok) return null;
+    const html = await r.text();
+    const m = html.match(/"videoId":"([A-Za-z0-9_-]{11})"/);
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+// reserva: busca 1 vídeo via API oficial (gasta cota — só quando o scrape falha)
+async function apiVideoId(q: string, ytkey: string): Promise<{ id: string | null; quota: boolean }> {
+  const r = await fetch(
+    `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=1&q=${encodeURIComponent(q)}&key=${ytkey}`
+  );
+  if (!r.ok) return { id: null, quota: isQuota(r.status, await r.text()) };
+  const j = await r.json();
+  return { id: j.items?.[0]?.id?.videoId || null, quota: false };
 }
 
 async function pool(items: any[], limit: number, fn: (x: any) => Promise<void>) {
@@ -88,26 +122,22 @@ Deno.serve(async (req) => {
     }
 
     // ---------- MODO C: resolve videoIds do YouTube (pro player, sem login) ----------
+    // Estratégia: SCRAPE da página pública (sem cota, ilimitado). Se falhar numa
+    // faixa, cai pra API oficial (só aí gasta a cota de 100/dia).
     if (Array.isArray(body.ytsearch)) {
-      const ytkey = Deno.env.get("YT_API_KEY");
-      if (!ytkey) throw new Error("Falta YT_API_KEY nos secrets.");
+      const ytkey = Deno.env.get("YT_API_KEY"); // opcional (só reserva)
       const ids: Record<string, string> = {};
       let quota = false;
-      await pool(body.ytsearch, 4, async (item: any) => {
-        if (quota) return; // já estourou a cota: não gasta mais buscas
-        const r = await fetch(
-          `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=1&q=${encodeURIComponent(item.q)}&key=${ytkey}`
-        );
-        if (!r.ok) {
-          const b = await r.text();
-          if (isQuota(r.status, b)) { quota = true; }
-          return;
+      await pool(body.ytsearch, 6, async (item: any) => {
+        let vid = await scrapeVideoId(item.q);
+        if (!vid && ytkey && !quota) {
+          const res = await apiVideoId(item.q, ytkey);
+          if (res.quota) quota = true;
+          vid = res.id;
         }
-        const j = await r.json();
-        const vid = j.items?.[0]?.id?.videoId;
         if (vid) ids[item.uri] = vid;
       });
-      // devolve o que achou + sinaliza quota (200) pro app avisar e tocar o que dá
+      // quota só marca true se o scrape falhou E a API bateu no teto (raro agora)
       return json({ ids, quota });
     }
 

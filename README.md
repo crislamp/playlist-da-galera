@@ -92,9 +92,10 @@ precisam bater com a sua URL, incl. `http://127.0.0.1:5173`.)
 - **Spotify:** modo dev exige **Premium** na conta dona e libera **login só p/ ~5 contas**.
   Por isso a galera **contribui sem login** (busca via client-credentials), e criar
   playlist no Spotify fica **beta**.
-- **YouTube:** cota de **10.000 unidades/dia** (compartilhada). O player usa **cache**
-  pra não gastar à toa; criar playlist grande consome bastante.
-- **Ouvir no app é ilimitado** (player embed) — é o caminho recomendado pra todos.
+- **Tocar no app é ilimitado.** O player acha o clipe lendo a **página pública** do
+  YouTube (sem cota) e toca via embed — o caminho recomendado pra todos.
+- **YouTube (API oficial):** cota de **10.000 unidades/dia**, e a *busca* tem teto
+  fixo de **100/dia**. Só **exportar** playlist usa a API; o player não depende dela.
 
 ---
 

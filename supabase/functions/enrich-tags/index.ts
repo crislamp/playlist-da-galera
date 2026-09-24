@@ -68,6 +68,27 @@ Deno.serve(async (req) => {
       return json({ tracks });
     }
 
+    // ---------- MODO C: resolve videoIds do YouTube (pro player, sem login) ----------
+    if (Array.isArray(body.ytsearch)) {
+      const ytkey = Deno.env.get("YT_API_KEY");
+      if (!ytkey) throw new Error("Falta YT_API_KEY nos secrets.");
+      const ids: Record<string, string> = {};
+      await pool(body.ytsearch, 4, async (item: any) => {
+        const r = await fetch(
+          `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=1&q=${encodeURIComponent(item.q)}&key=${ytkey}`
+        );
+        if (!r.ok) {
+          const b = await r.text();
+          if (r.status === 403 && /quota/i.test(b)) throw new Error("quota");
+          return;
+        }
+        const j = await r.json();
+        const vid = j.items?.[0]?.id?.videoId;
+        if (vid) ids[item.uri] = vid;
+      });
+      return json({ ids });
+    }
+
     // ---------- MODO B: enriquecer com Last.fm ----------
     const key = Deno.env.get("LASTFM_API_KEY");
     if (!key) throw new Error("Falta LASTFM_API_KEY nos secrets.");

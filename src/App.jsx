@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, createContext, useContext } from "react";
+import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
 import { Routes, Route, useNavigate, useParams, Link } from "react-router-dom";
 import * as sp from "./lib/spotify.js";
 import * as yt from "./lib/youtube.js";
@@ -15,6 +15,7 @@ import {
   searchSpotify,
   getYtCache,
   saveYtCache,
+  getVideoIds,
 } from "./lib/supabase.js";
 import { buildBlend, moodScore } from "./lib/blend.js";
 
@@ -102,6 +103,11 @@ const STRINGS = {
     yt_progress: (i, n) => `Procurando os clipes… ${i}/${n}`,
     yt_quota: "Limite diário do YouTube atingido 😕 Tenta de novo amanhã (a cota reseta todo dia).",
     yt_noclips: "Não achei os clipes no YouTube 😕",
+    play_btn: "▶️ Tocar",
+    preparing: "Preparando…",
+    no_videos: "Não consegui preparar os clipes 😕",
+    up_next: "A seguir",
+    now_playing: "Tocando agora",
     pl_created: "✅ Playlist criada! Abrir no Spotify →",
     flow_label: "Fluidez das transições",
     flow_hi: "Flui liso 🌊",
@@ -195,6 +201,11 @@ const STRINGS = {
     yt_progress: (i, n) => `Finding the clips… ${i}/${n}`,
     yt_quota: "YouTube daily limit reached 😕 Try again tomorrow (the quota resets daily).",
     yt_noclips: "Couldn't find the clips on YouTube 😕",
+    play_btn: "▶️ Play",
+    preparing: "Getting it ready…",
+    no_videos: "Couldn't prepare the clips 😕",
+    up_next: "Up next",
+    now_playing: "Now playing",
     pl_created: "✅ Playlist created! Open in Spotify →",
     flow_label: "Transition flow",
     flow_hi: "Flows smooth 🌊",
@@ -658,6 +669,88 @@ function TrackRow({ t, on, onClick }) {
   );
 }
 
+/* ---------------- player (toca o blend no app, via YouTube) ---------------- */
+let ytApiPromise = null;
+function loadYouTubeApi() {
+  if (window.YT && window.YT.Player) return Promise.resolve();
+  if (ytApiPromise) return ytApiPromise;
+  ytApiPromise = new Promise((resolve) => {
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => { if (prev) prev(); resolve(); };
+    const s = document.createElement("script");
+    s.src = "https://www.youtube.com/iframe_api";
+    document.head.appendChild(s);
+  });
+  return ytApiPromise;
+}
+
+function Player({ tracks, onClose }) {
+  const { t } = useT();
+  const [idx, setIdx] = useState(0);
+  const playerRef = useRef(null);
+  const idxRef = useRef(0);
+  useEffect(() => { idxRef.current = idx; }, [idx]);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadYouTubeApi().then(() => {
+      if (cancelled) return;
+      playerRef.current = new window.YT.Player("yt-player-el", {
+        videoId: tracks[0].videoId,
+        playerVars: { autoplay: 1, playsinline: 1, rel: 0 },
+        events: {
+          onStateChange: (e) => {
+            if (e.data === window.YT.PlayerState.ENDED) {
+              const next = idxRef.current + 1;
+              if (next < tracks.length) setIdx(next);
+            }
+          },
+        },
+      });
+    });
+    return () => { cancelled = true; try { playerRef.current?.destroy(); } catch {} };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const p = playerRef.current;
+    if (p && p.loadVideoById && tracks[idx]) {
+      try { p.loadVideoById(tracks[idx].videoId); } catch {}
+    }
+  }, [idx, tracks]);
+
+  const cur = tracks[idx];
+  return (
+    <div className="player-overlay" onClick={(e) => { if (e.target.classList.contains("player-overlay")) onClose(); }}>
+      <div className="player-box">
+        <div className="player-head">
+          <div className="player-now">
+            <div className="pn-label">{t("now_playing")}</div>
+            <div className="pn-title">{cur?.title}</div>
+            <div className="pn-artist">{cur?.artist}</div>
+          </div>
+          <button className="player-close" onClick={onClose} aria-label="X">✕</button>
+        </div>
+        <div className="player-video"><div id="yt-player-el" /></div>
+        <div className="player-ctrl">
+          <button className="btn ghost sm" onClick={() => setIdx((i) => Math.max(0, i - 1))} disabled={idx === 0}>⏮</button>
+          <span className="player-pos">{idx + 1}/{tracks.length}</span>
+          <button className="btn ghost sm" onClick={() => setIdx((i) => Math.min(tracks.length - 1, i + 1))} disabled={idx === tracks.length - 1}>⏭</button>
+        </div>
+        <div className="player-list">
+          <div className="pl-label">{t("up_next")}</div>
+          {tracks.map((tk, i) => (
+            <button key={tk.videoId + i} className={"pl-item" + (i === idx ? " on" : "")} onClick={() => setIdx(i)}>
+              <span className="pl-num">{i + 1}</span>
+              <span className="pl-meta"><span className="tt">{tk.title}</span><span className="aa">{tk.artist}</span></span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- blend + exportar ---------------- */
 function Blend({ role, data, onRefresh }) {
   const { t, lang } = useT();
@@ -673,6 +766,8 @@ function Blend({ role, data, onRefresh }) {
   const [picked, setPicked] = useState({});
   const [suggBusy, setSuggBusy] = useState(false);
   const [suggMsg, setSuggMsg] = useState("");
+  const [playerTracks, setPlayerTracks] = useState(null);
+  const [preparing, setPreparing] = useState(false);
 
   const regen = useCallback(() => {
     setResult(buildBlend(data.participants, data.tracks));
@@ -779,11 +874,27 @@ function Blend({ role, data, onRefresh }) {
     }
   }
 
+  async function openPlayer() {
+    setPreparing(true); setErr("");
+    try {
+      const resolved = await getVideoIds(order);
+      const playable = resolved.filter((tk) => tk.videoId);
+      if (!playable.length) { setErr(t("no_videos")); return; }
+      setPlayerTracks(playable);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setPreparing(false);
+    }
+  }
+
   return (
     <div className="card">
+      {playerTracks && <Player tracks={playerTracks} onClose={() => setPlayerTracks(null)} />}
       <div className="queue-head">
         <h2>{t("the_playlist")}</h2>
         <div className="actions">
+          <button className="btn sm" onClick={openPlayer} disabled={preparing}>{preparing ? t("preparing") : t("play_btn")}</button>
           <button className="btn ghost sm" onClick={onRefresh}>{t("refresh")}</button>
           <button className="btn ghost sm" onClick={regen}>{t("reshuffle")}</button>
           <button className={"btn sm" + (enrichOpen ? "" : " ghost")} onClick={() => setEnrichOpen((v) => !v)}>{t("enrich")}</button>

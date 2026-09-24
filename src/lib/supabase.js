@@ -159,3 +159,22 @@ export async function saveYtCache(map) {
   if (!rows.length) return;
   try { await supabase.from("yt_cache").upsert(rows, { onConflict: "uri" }); } catch { /* sem cache */ }
 }
+
+// resolve o videoId do YouTube de cada faixa (cache primeiro; busca só o que falta).
+// SEM login (busca via API key no servidor). Retorna as faixas com { videoId }.
+export async function getVideoIds(tracks) {
+  if (!tracks || !tracks.length) return [];
+  const cache = await getYtCache(tracks.map((t) => t.uri));
+  const misses = tracks.filter((t) => !cache[t.uri]);
+  if (misses.length) {
+    try {
+      const { data } = await supabase.functions.invoke(RESOLVE_FN, {
+        body: { ytsearch: misses.map((t) => ({ uri: t.uri, q: `${t.title} ${t.artist}` })) },
+      });
+      const found = data?.ids || {};
+      Object.assign(cache, found);
+      saveYtCache(found).catch(() => {});
+    } catch { /* segue com o que tiver no cache */ }
+  }
+  return tracks.map((t) => ({ ...t, videoId: cache[t.uri] || null }));
+}

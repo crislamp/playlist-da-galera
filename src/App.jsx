@@ -198,8 +198,10 @@ const STRINGS = {
     empty_blend: "No songs yet. Share the hangout link 👆",
     everyone: "everyone",
     hino_tip: "Anthem — lots of people know it",
+    install_app: "📲 Install",
   },
 };
+STRINGS.pt.install_app = "📲 Instalar";
 
 const VIBE_LABELS = {
   pt: { chill: "chill", mellow: "suave", mid: "médio", upbeat: "animado", peak: "pico", none: "—" },
@@ -242,6 +244,25 @@ export default function App() {
     try { localStorage.setItem("pdg_lang", next); } catch {}
   }
 
+  // botão "Instalar" (Android/Chrome dispara beforeinstallprompt; iOS não tem)
+  const [installEvt, setInstallEvt] = useState(null);
+  useEffect(() => {
+    const onPrompt = (e) => { e.preventDefault(); setInstallEvt(e); };
+    const onInstalled = () => setInstallEvt(null);
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+  async function install() {
+    if (!installEvt) return;
+    installEvt.prompt();
+    try { await installEvt.userChoice; } catch {}
+    setInstallEvt(null);
+  }
+
   return (
     <LangCtx.Provider value={{ lang, t }}>
       <div className="wrap">
@@ -250,6 +271,7 @@ export default function App() {
             <h1>Playlist da <span className="em">Galera</span></h1>
           </Link>
           <div className="hdr-btns">
+            {installEvt && <button className="lang-btn install" onClick={install}>{t("install_app")}</button>}
             <button className="lang-btn" onClick={switchLang} aria-label="Language">🌐 {lang.toUpperCase()}</button>
             <ThemeToggle />
           </div>

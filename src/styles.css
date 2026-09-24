@@ -56,6 +56,8 @@ h2 { font-family: "Nunito Sans", sans-serif; font-size: 22px; margin: 0; letter-
 .lang-btn { background: var(--surface); border: 1px solid var(--line); color: var(--text-soft);
   height: 38px; padding: 0 12px; border-radius: 10px; cursor: pointer; font: inherit; font-size: 12.5px; font-weight: 700; }
 .lang-btn:hover, .theme-btn:hover { color: var(--text); }
+.lang-btn.install { background: var(--accent); color: #fff; border-color: var(--accent); }
+.lang-btn.install:hover { color: #fff; filter: brightness(1.06); }
 
 .help { border: 1px solid var(--line); background: var(--surface); color: var(--text-soft);
   width: 18px; height: 18px; border-radius: 50%; font-size: 11px; font-weight: 700; cursor: pointer;

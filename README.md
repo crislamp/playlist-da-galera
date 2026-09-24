@@ -1,108 +1,101 @@
 # 🎧 Playlist da Galera
 
-Junta o Spotify de todo mundo do rolê numa playlist só, **com justiça**.
-Cada pessoa conecta o Spotify, o app pega as músicas que ela mais ouve
-(+ as que ela quiser adicionar na mão), mistura tudo sem deixar ninguém
-monopolizar o som, e cria a playlist direto no Spotify de vocês.
+> Junta o gosto de todo mundo do rolê numa playlist só — com justiça e fluxo de DJ.
 
-- **Multi-celular:** cada um entra do próprio aparelho pelo link do rolê.
-- **Blend justo:** nunca duas músicas da mesma pessoa em seguida; quem tem
-  mais música ganha mais espaço, sem dominar; músicas que 2+ pessoas curtem
-  viram "âncoras" espalhadas pelo set.
-- **Exporta pro Spotify** (nativo). YouTube Music fica pra depois (não tem
-  API pública de escrita — daria só lista/links).
+**▶️ Ao vivo:** [playlist-da-galera.vercel.app](https://playlist-da-galera.vercel.app)
+
+A gente nunca reclama da música — reclama que a playlist não é *nossa*. Este é um
+appzinho (side project) que resolve isso: cada pessoa joga as músicas que curte, e o
+app monta **um set só**, sem ninguém monopolizar o som e sem pular de uma balada
+chorosa direto pro pancadão.
+
+*PT/EN · funciona no celular · dá pra instalar (PWA).*
 
 ---
 
-## ✅ Checklist de setup (uma vez só)
+## ✨ O que ele faz
 
-### 0. Instalar o Node (na sua máquina)
-Ainda não tem `node`/`npm`. No terminal:
-```bash
-brew install node
-```
+- **Todo mundo contribui — sem login.** Busca a música e adiciona, ou cola uma
+  **playlist pública do YouTube/YT Music**. (quem tiver Spotify pode conectar pra
+  puxar as mais ouvidas — opcional)
+- **Blend justo:** cada pessoa tem o mesmo espaço, nunca duas da mesma em seguida,
+  e as músicas que 2+ curtem viram **âncoras** ("todos curtem").
+- **Fluxo de fim de festa:** o app entende o **clima** de cada faixa (via tags do
+  Last.fm) e ordena numa **rampa** — começa chill e sobe até os hinos no fim. Nada
+  de Lana Del Rey emendada num pancadão. 😅
+- **🔥 Hinos** marcados (por nº de ouvintes) e **✨ sugestões** de músicas novas por vibe.
+- **▶️ Toca no próprio app** (clipes do YouTube, sem login — e dá pra jogar na TV).
+- **Exporta** pro Spotify ou YouTube da sua conta *(beta — ver limites abaixo)*.
 
-### 1. Spotify Developer (pega o Client ID)
-1. Entre em **https://developer.spotify.com/dashboard** com o Spotify de vocês.
-2. **Create app**. Preencha nome/descrição (qualquer coisa).
-3. Em **Redirect URIs**, adicione EXATAMENTE estes dois:
-   - `http://127.0.0.1:5173/callback`  ← dev local (use `127.0.0.1`, **não** `localhost`)
-   - `https://SEU-APP.vercel.app/callback`  ← só depois que publicar (pode adicionar já)
-4. Em **APIs used**, marque **Web API**. Salve.
-5. Abra o app criado → **Settings** → copie o **Client ID**.
-6. **Users and Access** (Dev Mode = até 25 pessoas): adicione **nome + email
-   do Spotify** de cada amigo que vai usar. *Sem isso o login deles falha.*
+## 🧠 Como o blend funciona
 
-### 2. Supabase (backend)
-1. Entre em **https://supabase.com** → **New project** (plano free serve).
-2. Espere provisionar. Vá em **SQL Editor** → cole o conteúdo de
-   [`supabase-schema.sql`](./supabase-schema.sql) → **Run**.
-3. Vá em **Project Settings → API** e copie:
-   - **Project URL**
-   - **anon public** key
+O coração está em [`src/lib/blend.js`](./src/lib/blend.js):
 
-### 3. Ligar as chaves no projeto
-```bash
-cd ~/playlist-da-galera
-cp .env.example .env
-```
-Abra o `.env` e cole:
-```
-VITE_SPOTIFY_CLIENT_ID=...        # passo 1.5
-VITE_SUPABASE_URL=...             # passo 2.3
-VITE_SUPABASE_ANON_KEY=...        # passo 2.3
-```
+1. **Dedupe + âncoras** — músicas repetidas viram consenso.
+2. **Clima (mood 0–100)** — cada faixa ganha uma nota a partir das tags de gênero/mood.
+3. **Conectividade** — usa artistas similares (Last.fm) pra escolher faixas que
+   "conversam" e dividir por pessoa com justiça.
+4. **Arco exponencial** — ordena mirando uma rampa que explode no fim, encostando
+   faixas parecidas (transições suaves) e puxando os hinos pro final.
 
-### 4. Rodar
+> Curiosidade: o Spotify aposentou *audio-features* e *recommendations* (2024–2026),
+> então a "energia" e as similaridades vêm do **Last.fm**, não do Spotify.
+
+## 🛠️ Stack
+
+- **Front:** React + Vite (deploy na Vercel), PWA
+- **Backend:** Supabase (Postgres + 1 Edge Function)
+- **APIs:** Spotify (login PKCE + busca via client-credentials), Last.fm (vibe),
+  YouTube Data API (importar playlist, resolver clipes, player embed)
+
+---
+
+## ⚙️ Rodar localmente
+
+Precisa de contas grátis: Spotify Developer, Supabase, Last.fm API e Google Cloud (YouTube).
+
 ```bash
 npm install
-npm run dev
+cp .env.example .env   # preencha as chaves
+npm run dev            # abre em http://127.0.0.1:5173
 ```
-Abra **http://127.0.0.1:5173** (use `127.0.0.1`, casa com o Redirect URI).
+
+**`.env`** (todas são públicas — usadas no navegador):
+```
+VITE_SPOTIFY_CLIENT_ID=...     # Spotify Dashboard → seu app → Settings
+VITE_SUPABASE_URL=...          # Supabase → Project Settings → API
+VITE_SUPABASE_ANON_KEY=...     # idem (anon public)
+VITE_RESOLVE_FN=...            # slug da Edge Function (ex: swift-responder)
+VITE_GOOGLE_CLIENT_ID=...      # Google Cloud → OAuth Client (só p/ export YouTube)
+```
+
+**Banco (Supabase → SQL Editor):** rode, em ordem,
+[`supabase-schema.sql`](./supabase-schema.sql), [`migration-v2.sql`](./migration-v2.sql),
+[`migration-v3.sql`](./migration-v3.sql) e [`migration-v5.sql`](./migration-v5.sql).
+
+**Edge Function** ([`supabase/functions/enrich-tags`](./supabase/functions/enrich-tags/index.ts)):
+publique e configure os secrets `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`,
+`LASTFM_API_KEY`, `YT_API_KEY`. (o Redirect URI do Spotify e a Origem JS do Google
+precisam bater com a sua URL, incl. `http://127.0.0.1:5173`.)
+
+## 🗺️ Mapa do código
+
+- [`src/App.jsx`](./src/App.jsx) — telas, i18n (PT/EN), player, blend na UI
+- [`src/lib/blend.js`](./src/lib/blend.js) — o algoritmo do blend (justiça + arco)
+- [`src/lib/spotify.js`](./src/lib/spotify.js) — login PKCE, top tracks, busca, criar playlist
+- [`src/lib/youtube.js`](./src/lib/youtube.js) — player e criar playlist no YouTube
+- [`src/lib/supabase.js`](./src/lib/supabase.js) — rolês, faixas, cache, chamadas à função
+- [`supabase/functions/enrich-tags`](./supabase/functions/enrich-tags/index.ts) — busca Spotify, tags Last.fm, YouTube
+
+## ⚠️ Limites conhecidos (regras das plataformas em 2026)
+
+- **Spotify:** modo dev exige **Premium** na conta dona e libera **login só p/ ~5 contas**.
+  Por isso a galera **contribui sem login** (busca via client-credentials), e criar
+  playlist no Spotify fica **beta**.
+- **YouTube:** cota de **10.000 unidades/dia** (compartilhada). O player usa **cache**
+  pra não gastar à toa; criar playlist grande consome bastante.
+- **Ouvir no app é ilimitado** (player embed) — é o caminho recomendado pra todos.
 
 ---
 
-## 🚀 Publicar (pra galera acessar de qualquer lugar)
-1. Suba a pasta num repo do GitHub.
-2. Em **vercel.com** → **Import** o repo.
-3. Em **Environment Variables**, coloque as mesmas 3 chaves do `.env`.
-4. Deploy. Pegue a URL (`https://SEU-APP.vercel.app`).
-5. Volte no Spotify Dashboard e confirme o Redirect URI
-   `https://SEU-APP.vercel.app/callback`.
-
----
-
-## 🧠 Como funciona (mapa rápido)
-- [`src/lib/spotify.js`](./src/lib/spotify.js) — login PKCE + top tracks + busca + criar playlist.
-- [`src/lib/supabase.js`](./src/lib/supabase.js) — rolês e músicas de cada um.
-- [`src/lib/blend.js`](./src/lib/blend.js) — o algoritmo do blend justo.
-- [`src/App.jsx`](./src/App.jsx) — as telas (criar/entrar, conectar, escolher, gerar).
-
-## 🔁 Modelo atual (v2 — importar playlist)
-
-A galera **não faz login**: cada um cola o link de uma playlist **pública** do
-Spotify, e o app lê as faixas via uma Edge Function (Client Credentials do
-próprio app). Só **você** (dona) loga — e só na hora de **criar** a playlist
-final. Assim o teto de 5 usuários do Spotify não se aplica.
-
-Setup extra do v2 (uma vez):
-1. **Spotify Premium na conta dona** — desde fev/2026 o Spotify exige isso pra a
-   Web API funcionar. Sem Premium, dá 403.
-2. **Migração do banco:** rode [`migration-v2.sql`](./migration-v2.sql) no SQL
-   Editor do Supabase.
-3. **Edge Function:** publique [`supabase/functions/resolve-spotify-playlist`](./supabase/functions/resolve-spotify-playlist/index.ts)
-   e configure os secrets `SPOTIFY_CLIENT_ID` e `SPOTIFY_CLIENT_SECRET`
-   (o *client secret* fica em **Settings → View client secret** no dashboard do
-   Spotify — ele nunca vai pro front).
-   - Via CLI: `supabase functions deploy resolve-spotify-playlist`
-   - Ou pelo dashboard do Supabase (Edge Functions → criar → colar o código),
-     e em **Edge Functions → Secrets** adicione os dois valores.
-
-## ⚠️ Limites conhecidos (regras atuais do Spotify)
-- **Dono do app precisa de Premium** (fev/2026), senão a API dá 403.
-- **Dev Mode = até 5 pessoas que fazem LOGIN.** Como aqui a galera só cola link
-  (não loga), isso não limita o rolê — só você loga.
-- **Recommendations** e **Audio Features** aposentados — por isso o blend usa as
-  músicas reais das playlists e a fluidez do set vem do **gênero** (não de
-  energia/BPM automáticos).
-- Playlists importadas precisam estar **públicas**.
+Feito de brincadeira, num fim de semana — em conversa com uma IA (vibe coding). 💜

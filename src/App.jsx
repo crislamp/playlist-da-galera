@@ -75,6 +75,8 @@ const STRINGS = {
     sp_pl_title: "Colar playlist do Spotify — sem login 🎧",
     sp_pl_hint: "💡 Funciona com qualquer playlist pública (até 50 músicas).",
     sp_pl_beta: "📋 Colar playlist do Spotify (beta — precisa logar, e só suas/colaborativas)",
+    picks_title: "🎶 Adicione suas músicas",
+    picks_sub: "Diga seu nome e jogue as músicas que você quer ouvir no rolê. Sem login.",
     your_name: "Seu nome no rolê",
     your_name_ph: "Como você aparece",
     top_played: "Mais ouvidas:",
@@ -143,7 +145,7 @@ const STRINGS = {
     sugg_none: "Não achei sugestões novas dessa vibe — tenta outra.",
     sugg_login: "Conecte seu Spotify (lá em cima) pra buscar sugestões.",
     sugg_added: (n) => `✅ ${n} adicionada(s)!`,
-    empty_blend: "Ninguém jogou música ainda. Compartilhe o link do rolê 👆",
+    empty_blend: "As músicas da galera vão aparecer aqui 🎶",
     everyone: "todos curtem",
     hino_tip: "Hino — muita gente conhece",
   },
@@ -190,6 +192,8 @@ const STRINGS = {
     sp_pl_title: "Paste a Spotify playlist — no login 🎧",
     sp_pl_hint: "💡 Works with any public playlist (up to 50 songs).",
     sp_pl_beta: "📋 Paste a Spotify playlist (beta — needs login, only yours/collaborative)",
+    picks_title: "🎶 Add your songs",
+    picks_sub: "Add your name and drop the songs you want to hear at the hangout. No login.",
     your_name: "Your name",
     your_name_ph: "How you appear",
     top_played: "Top played:",
@@ -258,7 +262,7 @@ const STRINGS = {
     sugg_none: "No new suggestions for that vibe — try another.",
     sugg_login: "Connect your Spotify (above) to get suggestions.",
     sugg_added: (n) => `✅ ${n} added!`,
-    empty_blend: "No songs yet. Share the hangout link 👆",
+    empty_blend: "The group's songs will show up here 🎶",
     everyone: "everyone",
     hino_tip: "Anthem — lots of people know it",
     install_app: "📲 Install",
@@ -639,6 +643,9 @@ function MyPicks({ role, onSaved }) {
 
   return (
     <div className="card">
+      <h2 className="picks-title">{t("picks_title")}</h2>
+      <p className="picks-sub">{t("picks_sub")}</p>
+
       <div className="field">
         <label htmlFor="dn">{t("your_name")}</label>
         <input id="dn" value={name} onChange={(e) => setName(e.target.value)} maxLength={24}
@@ -647,7 +654,7 @@ function MyPicks({ role, onSaved }) {
 
       <div className="tabs">
         <button className={mode === "add" ? "on" : ""} onClick={() => setMode("add")}>{t("tab_add")}</button>
-        <button className={mode === "tops" ? "on" : ""} onClick={() => setMode("tops")}>{t("tab_tops")}</button>
+        <button className={mode === "tops" ? "on" : ""} onClick={() => setMode("tops")}>{t("tab_tops")}<sup className="betatag">{t("beta_tag")}</sup></button>
         <button className={mode === "playlist" ? "on" : ""} onClick={() => setMode("playlist")}>{t("tab_playlist")}</button>
       </div>
 
@@ -734,7 +741,7 @@ function MyPicks({ role, onSaved }) {
       <div className="row-right">
         {loggedIn
           ? <button className="linkbtn" onClick={() => { sp.logout(); setLoggedIn(false); setTops([]); setReady(false); }}>{t("logout")}</button>
-          : <button className="linkbtn" onClick={() => sp.login()}>{t("connect_btn")}</button>}
+          : <button className="linkbtn" onClick={() => sp.login()}>{t("connect_btn")}<sup className="betatag">{t("beta_tag")}</sup></button>}
       </div>
       {status && <p className="muted" style={{ marginTop: 10 }}>{status}</p>}
     </div>

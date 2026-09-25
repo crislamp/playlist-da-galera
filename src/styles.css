@@ -73,6 +73,10 @@ h2 { font-family: "Nunito Sans", sans-serif; font-size: 22px; margin: 0; letter-
 .cards2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 560px) { .cards2 { grid-template-columns: 1fr; } }
 
+/* página do rolê: deixa claro o "adicione suas músicas" pra quem chega pelo link */
+.picks-title { font-size: 18px; font-weight: 800; margin: 0 0 4px; }
+.picks-sub { color: var(--text-soft); font-size: 13px; line-height: 1.5; margin: 0 0 16px; }
+
 /* home: uma ação principal (criar) + entrar com código discreto */
 .home-card { max-width: 440px; margin: 0 auto; }
 .home-hint { color: var(--text-faint); font-size: 12.5px; line-height: 1.5; margin: 12px 2px 0; }

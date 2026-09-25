@@ -127,23 +127,21 @@ Deno.serve(async (req) => {
     }
 
     // ---------- MODO C: resolve videoIds do YouTube (pro player, sem login) ----------
-    // Estratégia: SCRAPE da página pública (sem cota, ilimitado). Se falhar numa
-    // faixa, cai pra API oficial (só aí gasta a cota de 100/dia).
+    // SCRAPE da página pública (sem cota, ilimitado). Concorrência baixa + 1 retry
+    // pra não tomar bloqueio momentâneo do YouTube sob rajada. Sem fallback pra API:
+    // ela tem teto de 100/dia e só geraria mensagem de cota enganosa.
     if (Array.isArray(body.ytsearch)) {
-      const ytkey = Deno.env.get("YT_API_KEY"); // opcional (só reserva)
+      const ytkey = Deno.env.get("YT_API_KEY"); // reserva silenciosa (não marca cota)
       const ids: Record<string, string> = {};
-      let quota = false;
-      await pool(body.ytsearch, 6, async (item: any) => {
+      await pool(body.ytsearch, 4, async (item: any) => {
         let vid = await scrapeVideoId(item.q);
-        if (!vid && ytkey && !quota) {
-          const res = await apiVideoId(item.q, ytkey);
-          if (res.quota) quota = true;
-          vid = res.id;
-        }
+        if (!vid) { await new Promise((r) => setTimeout(r, 300)); vid = await scrapeVideoId(item.q); }
+        // se o scrape mesmo assim falhar, tenta a API oficial — mas SEM sinalizar cota
+        if (!vid && ytkey) vid = (await apiVideoId(item.q, ytkey)).id;
         if (vid) ids[item.uri] = vid;
       });
-      // quota só marca true se o scrape falhou E a API bateu no teto (raro agora)
-      return json({ ids, quota });
+      // scrape é ilimitado -> nunca reporta cota; faixas não achadas só são puladas
+      return json({ ids, quota: false });
     }
 
     // ---------- MODO D: importar playlist do YouTube (sem login) ----------

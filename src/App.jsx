@@ -33,7 +33,7 @@ const SUGG_NAME = "✨ Sugestões"; // nome do participante das sugestões (fixo
 /* ---------------- i18n ---------------- */
 const STRINGS = {
   pt: {
-    tagline: "Junta o gosto de todo mundo do rolê numa playlist só. Cada um conecta o Spotify (ou cola uma playlist), o app mistura com justiça — ninguém monopoliza o som e o set flui sem tranco de vibe.",
+    tagline: "A playlist do rolê feita por todo mundo, sem ninguém monopolizar o som. 🎧",
     setup_bold: "Falta configurar as chaves.",
     setup_rest: " Copie .env.example para .env e preencha o Client ID do Spotify e as chaves do Supabase. Veja o README.md.",
     create_hangout: "Criar um rolê",
@@ -43,6 +43,8 @@ const STRINGS = {
     soon: "em breve",
     dest_youtube: "YouTube (clipes)",
     create_btn: "Criar e pegar o link",
+    home_flow_hint: "Cria o rolê, manda o link pra galera, e cada um adiciona as músicas. Sem login.",
+    have_code: "Recebeu um código? Entrar",
     creating: "Criando…",
     join_hangout: "Entrar num rolê",
     hangout_code: "Código do rolê",
@@ -146,7 +148,7 @@ const STRINGS = {
     hino_tip: "Hino — muita gente conhece",
   },
   en: {
-    tagline: "Blends everyone's taste at the hangout into one playlist. Each person connects Spotify (or pastes a playlist), and the app mixes it fairly — nobody hogs the sound and the set flows without vibe whiplash.",
+    tagline: "The hangout playlist made by everyone — nobody hogs the aux. 🎧",
     setup_bold: "Keys not configured yet.",
     setup_rest: " Copy .env.example to .env and fill in your Spotify Client ID and Supabase keys. See README.md.",
     create_hangout: "Create a hangout",
@@ -156,6 +158,8 @@ const STRINGS = {
     soon: "soon",
     dest_youtube: "YouTube (clips)",
     create_btn: "Create & get the link",
+    home_flow_hint: "Create the hangout, share the link, and everyone adds their songs. No login.",
+    have_code: "Got a code? Join",
     creating: "Creating…",
     join_hangout: "Join a hangout",
     hangout_code: "Hangout code",
@@ -367,6 +371,7 @@ function Home() {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [showCode, setShowCode] = useState(false);
 
   async function create() {
     if (!name.trim()) { setErr(t("err_name_role")); return; }
@@ -389,29 +394,33 @@ function Home() {
   return (
     <>
       <p className="tagline">{t("tagline")}</p>
-      <div className="cards2">
-        <div className="card">
-          <p className="eyebrow">{t("create_hangout")}</p>
-          <div className="field">
-            <label htmlFor="rn">{t("hangout_name")}</label>
-            <input id="rn" value={name} onChange={(e) => { setName(e.target.value); if (err) setErr(""); }}
-              placeholder={t("hangout_name_ph")} maxLength={40}
-              onKeyDown={(e) => e.key === "Enter" && create()} />
-          </div>
-          <button className="btn wide" onClick={create} disabled={busy || !configOk}>
-            {busy ? t("creating") : t("create_btn")}
-          </button>
+      <div className="card home-card">
+        <p className="eyebrow">{t("create_hangout")}</p>
+        <div className="field">
+          <label htmlFor="rn">{t("hangout_name")}</label>
+          <input id="rn" value={name} onChange={(e) => { setName(e.target.value); if (err) setErr(""); }}
+            placeholder={t("hangout_name_ph")} maxLength={40} autoFocus
+            onKeyDown={(e) => e.key === "Enter" && create()} />
         </div>
-        <div className="card">
-          <p className="eyebrow">{t("join_hangout")}</p>
-          <div className="field">
+        <button className="btn wide" onClick={create} disabled={busy || !configOk}>
+          {busy ? t("creating") : t("create_btn")}
+        </button>
+        <p className="home-hint">{t("home_flow_hint")}</p>
+
+        {!showCode ? (
+          <button className="linkbtn home-codelink" onClick={() => setShowCode(true)}>{t("have_code")}</button>
+        ) : (
+          <div className="field code-row">
             <label htmlFor="rc">{t("hangout_code")}</label>
-            <input id="rc" value={code} onChange={(e) => { setCode(e.target.value.toUpperCase()); if (err) setErr(""); }}
-              placeholder={t("code_ph")} maxLength={6}
-              onKeyDown={(e) => e.key === "Enter" && enter()} />
+            <div className="code-row-inputs">
+              <input id="rc" value={code} autoFocus
+                onChange={(e) => { setCode(e.target.value.toUpperCase()); if (err) setErr(""); }}
+                placeholder={t("code_ph")} maxLength={6}
+                onKeyDown={(e) => e.key === "Enter" && enter()} />
+              <button className="btn ghost" onClick={enter} disabled={!configOk}>{t("join_btn")}</button>
+            </div>
           </div>
-          <button className="btn ghost wide" onClick={enter} disabled={!configOk}>{t("join_btn")}</button>
-        </div>
+        )}
       </div>
       {err && <p className="err">{err}</p>}
     </>

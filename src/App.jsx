@@ -577,12 +577,12 @@ function MyPicks({ role, onSaved }) {
     finally { setSearching(false); }
   }
   async function addPlaylist() {
-    if (!plName.trim()) return setStatus(t("err_whose"));
-    if (!plUrl.trim()) return setStatus(t("err_pastelink"));
+    if (!plName.trim()) return setStatus("⚠️ " + t("err_whose"));
+    if (!plUrl.trim()) return setStatus("⚠️ " + t("err_pastelink"));
     setPlBusy(true);
     try {
       setStatus(t("reading_pl", plName.trim()));
-      let tracks = (await importSpotifyPlaylist(plUrl.trim())).slice(0, 40);
+      let tracks = (await importSpotifyPlaylist(plUrl.trim())).slice(0, 100);
       if (!tracks.length) throw new Error(t("err_empty_pl"));
       setStatus(t("analyzing"));
       tracks = await enrichTags(tracks.map((tk) => ({ ...tk, source: "playlist" })));
@@ -598,12 +598,12 @@ function MyPicks({ role, onSaved }) {
     }
   }
   async function addYtPlaylist() {
-    if (!ypName.trim()) return setStatus(t("err_whose"));
-    if (!ypUrl.trim()) return setStatus(t("err_pastelink"));
+    if (!ypName.trim()) return setStatus("⚠️ " + t("err_whose"));
+    if (!ypUrl.trim()) return setStatus("⚠️ " + t("err_pastelink"));
     setYpBusy(true);
     try {
       setStatus(t("reading_pl", ypName.trim()));
-      let tracks = (await importYtPlaylist(ypUrl.trim())).slice(0, 40);
+      let tracks = (await importYtPlaylist(ypUrl.trim())).slice(0, 100);
       if (!tracks.length) throw new Error(t("err_empty_pl"));
       setStatus(t("analyzing"));
       tracks = await enrichTags(tracks.map((tk) => ({ ...tk, source: "youtube" })));
@@ -736,6 +736,8 @@ function MyPicks({ role, onSaved }) {
         </div>
       )}
 
+      {status && <p className={status.startsWith("⚠️") ? "err" : "muted"} style={{ margin: "4px 0 12px" }}>{status}</p>}
+
       <button className="btn wide" onClick={save} disabled={count === 0}>{t("save_btn", count)}</button>
 
       <div className="row-right">
@@ -743,7 +745,6 @@ function MyPicks({ role, onSaved }) {
           ? <button className="linkbtn" onClick={() => { sp.logout(); setLoggedIn(false); setTops([]); setReady(false); }}>{t("logout")}</button>
           : <button className="linkbtn" onClick={() => sp.login()}>{t("connect_btn")}<sup className="betatag">{t("beta_tag")}</sup></button>}
       </div>
-      {status && <p className="muted" style={{ marginTop: 10 }}>{status}</p>}
     </div>
   );
 }

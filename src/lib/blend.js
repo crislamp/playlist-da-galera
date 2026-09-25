@@ -121,7 +121,7 @@ export function buildBlend(participants, tracks) {
   // DIVISÃO IGUAL: mantém as âncoras (consenso — todo mundo curte) e divide o
   // resto por pessoa, escolhendo as faixas mais conectáveis (melhores transições).
   const nActive = new Set(pool.map((s) => s.ownerIds[0])).size || 1;
-  const perPerson = Math.max(6, Math.ceil(45 / nActive));
+  const perPerson = Math.max(6, Math.ceil(100 / nActive));
 
   const anchors = pool.filter((s) => s.anchor).sort((a, b) => (b.conn - a.conn) || (b.relPop - a.relPop));
   let work = anchors.slice(0, Math.max(6, perPerson)); // teto de âncoras

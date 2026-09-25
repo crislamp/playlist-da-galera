@@ -339,7 +339,7 @@ export default function App() {
           </Link>
           <div className="hdr-btns">
             {installEvt && <button className="lang-btn install" onClick={install}>{t("install_app")}</button>}
-            <button className="lang-btn" onClick={switchLang} aria-label="Language">🌐 {lang.toUpperCase()}</button>
+            <button className="lang-btn flag" onClick={switchLang} aria-label={lang === "pt" ? "Switch to English" : "Mudar para português"} title={lang === "pt" ? "English" : "Português"}>{lang === "pt" ? "🇺🇸" : "🇧🇷"}</button>
             <ThemeToggle />
           </div>
         </header>
